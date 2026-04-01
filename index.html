@@ -217,7 +217,7 @@ const SUPABASE_URL = 'https://gdqkiyjxhtxbajwffvbd.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdkcWtpeWp4aHR4YmFqd2ZmdmJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwMzc4NTYsImV4cCI6MjA5MDYxMzg1Nn0.5KmijQ4EJ0EksMJKhCPttYbvWdS3Jq87qspWBEvmAwY';
 const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdkcWtpeWp4aHR4YmFqd2ZmdmJkIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTAzNzg1NiwiZXhwIjoyMDkwNjEzODU2fQ.l1HnNM6FbTTZBeHMAj7IPH8xEZXEhVILH8tWs18n5qc';
 
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
 let currentRunId = null;
 let currentRunData = null;
@@ -882,7 +882,7 @@ const TEST_CASES = [
 
 async function init() {
   try {
-    const { data, error } = await supabase.from('test_runs').select('id').limit(1);
+    const { data, error } = await sb.from('test_runs').select('id').limit(1);
     if (error) throw error;
     setConnectionStatus(true);
     await loadRuns();
@@ -896,7 +896,7 @@ async function init() {
 
 async function checkConnection() {
   try {
-    const { data, error } = await supabase.from('test_runs').select('id').limit(1);
+    const { data, error } = await sb.from('test_runs').select('id').limit(1);
     if (error) throw error;
     document.getElementById('setupModal').classList.add('hidden');
     setConnectionStatus(true);
@@ -929,7 +929,7 @@ function populateCategoryFilter() {
 }
 
 async function loadRuns() {
-  const { data, error } = await supabase.from('test_runs').select('*').order('created_at', { ascending: false });
+  const { data, error } = await sb.from('test_runs').select('*').order('created_at', { ascending: false });
   if (error) return;
   const sel = document.getElementById('runSelector');
   sel.innerHTML = '<option value="">-- اختر جلسة اختبار --</option>';
@@ -955,7 +955,7 @@ async function createNewRun() {
 
   const totalTests = TEST_CASES.reduce((sum, cat) => sum + cat.tests.length, 0);
 
-  const { data, error } = await supabase.from('test_runs').insert({
+  const { data, error } = await sb.from('test_runs').insert({
     run_name: name, tester_name: tester, app_version: version,
     environment: env, total_tests: totalTests
   }).select().single();
@@ -973,7 +973,7 @@ async function createNewRun() {
     });
   });
 
-  const { error: insertError } = await supabase.from('test_results').insert(results);
+  const { error: insertError } = await sb.from('test_results').insert(results);
   if (insertError) { alert('خطأ في انشاء الاختبارات: ' + insertError.message); return; }
 
   document.getElementById('newRunModal').classList.add('hidden');
@@ -994,10 +994,10 @@ async function loadRun(runId) {
   }
 
   currentRunId = runId;
-  const { data: run } = await supabase.from('test_runs').select('*').eq('id', runId).single();
+  const { data: run } = await sb.from('test_runs').select('*').eq('id', runId).single();
   currentRunData = run;
 
-  const { data: results } = await supabase.from('test_results').select('*').eq('run_id', runId);
+  const { data: results } = await sb.from('test_results').select('*').eq('run_id', runId);
   testResults = {};
   (results || []).forEach(r => { testResults[r.test_id] = r; });
 
@@ -1243,7 +1243,7 @@ async function setStatus(testId, status) {
   // Toggle: if same status, set back to pending
   const newStatus = result.status === status ? 'pending' : status;
 
-  const { error } = await supabase.from('test_results')
+  const { error } = await sb.from('test_results')
     .update({ status: newStatus, tested_at: new Date().toISOString() })
     .eq('run_id', currentRunId).eq('test_id', testId);
 
@@ -1262,7 +1262,7 @@ async function setStatus(testId, status) {
 async function saveNotes(testId) {
   if (!currentRunId) return;
   const notes = document.getElementById('notes-' + testId)?.value || '';
-  await supabase.from('test_results')
+  await sb.from('test_results')
     .update({ notes, updated_at: new Date().toISOString() })
     .eq('run_id', currentRunId).eq('test_id', testId);
   if (testResults[testId]) testResults[testId].notes = notes;
@@ -1271,7 +1271,7 @@ async function saveNotes(testId) {
 async function saveBugId(testId) {
   if (!currentRunId) return;
   const bugId = document.getElementById('bug-' + testId)?.value || '';
-  await supabase.from('test_results')
+  await sb.from('test_results')
     .update({ bug_id: bugId }).eq('run_id', currentRunId).eq('test_id', testId);
   if (testResults[testId]) testResults[testId].bug_id = bugId;
 }
@@ -1279,7 +1279,7 @@ async function saveBugId(testId) {
 async function saveSeverity(testId) {
   if (!currentRunId) return;
   const severity = document.getElementById('severity-' + testId)?.value || null;
-  await supabase.from('test_results')
+  await sb.from('test_results')
     .update({ severity }).eq('run_id', currentRunId).eq('test_id', testId);
   if (testResults[testId]) testResults[testId].severity = severity;
 }
@@ -1290,14 +1290,14 @@ async function uploadScreenshot(testId, input) {
   const ext = file.name.split('.').pop();
   const path = `${currentRunId}/${testId}_${Date.now()}.${ext}`;
 
-  const { error: uploadError } = await supabase.storage
+  const { error: uploadError } = await sb.storage
     .from('test-screenshots').upload(path, file, { contentType: file.type, upsert: true });
 
   if (uploadError) { alert('خطأ في رفع الصورة: ' + uploadError.message); return; }
 
-  const { data: { publicUrl } } = supabase.storage.from('test-screenshots').getPublicUrl(path);
+  const { data: { publicUrl } } = sb.storage.from('test-screenshots').getPublicUrl(path);
 
-  await supabase.from('test_results')
+  await sb.from('test_results')
     .update({ screenshot_url: publicUrl }).eq('run_id', currentRunId).eq('test_id', testId);
 
   if (testResults[testId]) testResults[testId].screenshot_url = publicUrl;
