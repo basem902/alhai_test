@@ -195,11 +195,12 @@
       </div>
       <div>
         <label class="block text-sm font-bold text-gray-600 mb-1">البيئة</label>
-        <select id="newEnvironment" class="w-full border rounded-xl px-4 py-2.5">
-          <option value="production">Production</option>
-          <option value="staging">Staging</option>
-          <option value="development">Development</option>
+        <select id="newEnvironment" class="w-full border rounded-xl px-4 py-2.5" onchange="updateEnvDesc()">
+          <option value="production">Production - النسخة الحية</option>
+          <option value="staging">Staging - بيئة ما قبل الاطلاق</option>
+          <option value="development">Development - بيئة التطوير</option>
         </select>
+        <p id="envDesc" class="text-xs text-gray-400 mt-1.5 leading-relaxed">النسخة النهائية التي يستخدمها العملاء فعليا. اختبر هنا اذا كنت تختبر التطبيق المنشور.</p>
       </div>
     </div>
     <div class="flex gap-3 mt-6">
@@ -879,6 +880,15 @@ const TEST_CASES = [
 // ==========================================
 // APP LOGIC
 // ==========================================
+
+function updateEnvDesc() {
+  const descs = {
+    production: 'النسخة النهائية التي يستخدمها العملاء فعليا. اختبر هنا اذا كنت تختبر التطبيق المنشور.',
+    staging: 'نسخة مطابقة للنسخة الحية لكن للاختبار فقط. تستخدم للتحقق قبل النشر الرسمي.',
+    development: 'بيئة المطورين المحلية. تستخدم لاختبار المميزات الجديدة قيد التطوير.'
+  };
+  document.getElementById('envDesc').textContent = descs[document.getElementById('newEnvironment').value];
+}
 
 async function init() {
   try {
