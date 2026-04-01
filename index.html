@@ -1,0 +1,1421 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Alhai POS - Manual Testing Platform</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { font-family: 'Tajawal', sans-serif; }
+    .status-pass { background: #dcfce7; color: #166534; border-color: #86efac; }
+    .status-fail { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+    .status-skip { background: #fef9c3; color: #854d0e; border-color: #fde047; }
+    .status-blocked { background: #e0e7ff; color: #3730a3; border-color: #a5b4fc; }
+    .status-pending { background: #f3f4f6; color: #374151; border-color: #d1d5db; }
+    .priority-critical { background: #dc2626; color: white; }
+    .priority-high { background: #ea580c; color: white; }
+    .priority-medium { background: #ca8a04; color: white; }
+    .priority-low { background: #16a34a; color: white; }
+    .category-card:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,0,0,0.1); }
+    .test-card { transition: all 0.2s; }
+    .test-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+    .fade-in { animation: fadeIn 0.3s ease-in; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .progress-bar { transition: width 0.5s ease; }
+    .screenshot-preview { max-height: 200px; object-fit: contain; cursor: pointer; }
+    .modal-overlay { background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 3px; }
+    @media print {
+      .no-print { display: none !important; }
+      .test-card { break-inside: avoid; page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+<!-- Setup Modal -->
+<div id="setupModal" class="fixed inset-0 modal-overlay z-50 flex items-center justify-center hidden">
+  <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 p-8">
+    <h2 class="text-2xl font-bold text-gray-800 mb-4">اعداد قاعدة البيانات</h2>
+    <p class="text-gray-600 mb-4">يجب تشغيل سكريبت SQL في Supabase SQL Editor اولا. انسخ المحتوى من ملف <code class="bg-gray-100 px-2 py-1 rounded">setup.sql</code> والصقه في:</p>
+    <a href="https://supabase.com/dashboard/project/gdqkiyjxhtxbajwffvbd/sql/new" target="_blank"
+       class="inline-block bg-emerald-600 text-white px-6 py-3 rounded-xl hover:bg-emerald-700 transition mb-4">
+      افتح Supabase SQL Editor
+    </a>
+    <p class="text-sm text-gray-500 mb-4">بعد تشغيل السكريبت، اضغط الزر ادناه:</p>
+    <button onclick="checkConnection()" class="bg-blue-600 text-white px-8 py-3 rounded-xl hover:bg-blue-700 transition font-bold">
+      تحقق من الاتصال
+    </button>
+    <p id="setupError" class="text-red-500 mt-3 hidden"></p>
+  </div>
+</div>
+
+<!-- Image Preview Modal -->
+<div id="imageModal" class="fixed inset-0 modal-overlay z-50 hidden items-center justify-center" onclick="this.classList.add('hidden')">
+  <img id="imageModalSrc" class="max-w-[90vw] max-h-[90vh] rounded-xl shadow-2xl">
+</div>
+
+<!-- App Header -->
+<header class="bg-gradient-to-l from-blue-700 via-blue-600 to-indigo-700 text-white shadow-lg no-print">
+  <div class="max-w-7xl mx-auto px-4 py-4">
+    <div class="flex items-center justify-between flex-wrap gap-4">
+      <div>
+        <h1 class="text-2xl font-extrabold">منصة اختبارات الحاي POS</h1>
+        <p class="text-blue-200 text-sm">Alhai POS Manual Testing Platform</p>
+      </div>
+      <div class="flex items-center gap-3 flex-wrap">
+        <div id="connectionStatus" class="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-lg text-sm">
+          <span class="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></span>
+          <span>جاري الاتصال...</span>
+        </div>
+        <select id="runSelector" class="bg-white/10 border border-white/20 rounded-lg px-3 py-1.5 text-sm text-white" onchange="loadRun(this.value)">
+          <option value="">-- اختر جلسة اختبار --</option>
+        </select>
+        <button onclick="showNewRunModal()" class="bg-white text-blue-700 px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-blue-50 transition">
+          + جلسة جديدة
+        </button>
+        <button onclick="exportReport()" class="bg-white/10 border border-white/20 px-4 py-1.5 rounded-lg text-sm hover:bg-white/20 transition">
+          تصدير التقرير
+        </button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- Stats Bar -->
+<div id="statsBar" class="bg-white border-b shadow-sm no-print hidden">
+  <div class="max-w-7xl mx-auto px-4 py-3">
+    <div class="flex items-center justify-between flex-wrap gap-4">
+      <div class="flex items-center gap-6 text-sm">
+        <span class="font-bold text-gray-700">المختبر: <span id="statTester" class="text-blue-600">-</span></span>
+        <span class="font-bold text-gray-700">الجلسة: <span id="statRun" class="text-blue-600">-</span></span>
+      </div>
+      <div class="flex items-center gap-4 text-sm font-bold">
+        <span class="text-gray-500">الاجمالي: <span id="statTotal" class="text-gray-800">0</span></span>
+        <span class="text-green-600">نجح: <span id="statPass">0</span></span>
+        <span class="text-red-600">فشل: <span id="statFail">0</span></span>
+        <span class="text-yellow-600">تخطي: <span id="statSkip">0</span></span>
+        <span class="text-indigo-600">محظور: <span id="statBlocked">0</span></span>
+        <span class="text-gray-400">معلق: <span id="statPending">0</span></span>
+      </div>
+      <div class="flex items-center gap-2 min-w-[200px]">
+        <div class="flex-1 bg-gray-200 rounded-full h-3 overflow-hidden">
+          <div id="progressBar" class="progress-bar h-full bg-gradient-to-l from-green-500 to-emerald-400 rounded-full" style="width:0%"></div>
+        </div>
+        <span id="progressPct" class="text-sm font-bold text-gray-600">0%</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Filter Bar -->
+<div class="bg-white border-b no-print" id="filterBar" style="display:none">
+  <div class="max-w-7xl mx-auto px-4 py-2 flex items-center gap-3 flex-wrap">
+    <input type="text" id="searchInput" placeholder="بحث في الاختبارات..." class="border rounded-lg px-3 py-1.5 text-sm flex-1 min-w-[200px]" oninput="applyFilters()">
+    <select id="statusFilter" class="border rounded-lg px-3 py-1.5 text-sm" onchange="applyFilters()">
+      <option value="all">كل الحالات</option>
+      <option value="pending">معلق</option>
+      <option value="pass">نجح</option>
+      <option value="fail">فشل</option>
+      <option value="skip">تخطي</option>
+      <option value="blocked">محظور</option>
+    </select>
+    <select id="priorityFilter" class="border rounded-lg px-3 py-1.5 text-sm" onchange="applyFilters()">
+      <option value="all">كل الاولويات</option>
+      <option value="critical">حرج</option>
+      <option value="high">عالي</option>
+      <option value="medium">متوسط</option>
+      <option value="low">منخفض</option>
+    </select>
+    <select id="categoryFilter" class="border rounded-lg px-3 py-1.5 text-sm" onchange="applyFilters()">
+      <option value="all">كل الاقسام</option>
+    </select>
+  </div>
+</div>
+
+<!-- Main Content -->
+<main class="max-w-7xl mx-auto px-4 py-6" id="mainContent">
+  <!-- Welcome Screen -->
+  <div id="welcomeScreen" class="text-center py-20">
+    <div class="text-6xl mb-4">🧪</div>
+    <h2 class="text-3xl font-bold text-gray-800 mb-2">مرحبا بك في منصة الاختبارات</h2>
+    <p class="text-gray-500 mb-8">انشئ جلسة اختبار جديدة للبدء، او اختر جلسة سابقة</p>
+    <button onclick="showNewRunModal()" class="bg-blue-600 text-white px-8 py-3 rounded-xl text-lg font-bold hover:bg-blue-700 transition shadow-lg">
+      انشاء جلسة اختبار جديدة
+    </button>
+  </div>
+
+  <!-- Test Categories Grid -->
+  <div id="categoriesView" class="hidden">
+    <div class="flex items-center justify-between mb-6">
+      <h2 class="text-xl font-bold text-gray-800">اقسام الاختبارات</h2>
+      <button onclick="toggleView('list')" class="text-sm text-blue-600 hover:text-blue-800 font-bold">عرض قائمة</button>
+    </div>
+    <div id="categoriesGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
+  </div>
+
+  <!-- Test List View -->
+  <div id="listView" class="hidden">
+    <div class="flex items-center justify-between mb-6">
+      <div class="flex items-center gap-3">
+        <button onclick="toggleView('categories')" class="text-blue-600 hover:text-blue-800">
+          <svg class="w-5 h-5 inline rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+          العودة للاقسام
+        </button>
+        <h2 id="listTitle" class="text-xl font-bold text-gray-800"></h2>
+      </div>
+      <div class="flex items-center gap-2">
+        <span id="listProgress" class="text-sm text-gray-500"></span>
+      </div>
+    </div>
+    <div id="testsList" class="space-y-4"></div>
+  </div>
+</main>
+
+<!-- New Run Modal -->
+<div id="newRunModal" class="fixed inset-0 modal-overlay z-50 hidden flex items-center justify-center">
+  <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-8">
+    <h2 class="text-xl font-bold text-gray-800 mb-6">جلسة اختبار جديدة</h2>
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-bold text-gray-600 mb-1">اسم الجلسة</label>
+        <input type="text" id="newRunName" placeholder="مثال: اختبار الاصدار 2.1" class="w-full border rounded-xl px-4 py-2.5">
+      </div>
+      <div>
+        <label class="block text-sm font-bold text-gray-600 mb-1">اسم المختبر</label>
+        <input type="text" id="newTesterName" placeholder="اسمك" class="w-full border rounded-xl px-4 py-2.5">
+      </div>
+      <div>
+        <label class="block text-sm font-bold text-gray-600 mb-1">اصدار التطبيق</label>
+        <input type="text" id="newAppVersion" value="1.0.0" class="w-full border rounded-xl px-4 py-2.5">
+      </div>
+      <div>
+        <label class="block text-sm font-bold text-gray-600 mb-1">البيئة</label>
+        <select id="newEnvironment" class="w-full border rounded-xl px-4 py-2.5">
+          <option value="production">Production</option>
+          <option value="staging">Staging</option>
+          <option value="development">Development</option>
+        </select>
+      </div>
+    </div>
+    <div class="flex gap-3 mt-6">
+      <button onclick="createNewRun()" class="flex-1 bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition">انشاء</button>
+      <button onclick="document.getElementById('newRunModal').classList.add('hidden')" class="flex-1 bg-gray-100 text-gray-700 py-3 rounded-xl font-bold hover:bg-gray-200 transition">الغاء</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ==========================================
+// SUPABASE CONFIG
+// ==========================================
+const SUPABASE_URL = 'https://gdqkiyjxhtxbajwffvbd.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdkcWtpeWp4aHR4YmFqd2ZmdmJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwMzc4NTYsImV4cCI6MjA5MDYxMzg1Nn0.5KmijQ4EJ0EksMJKhCPttYbvWdS3Jq87qspWBEvmAwY';
+const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdkcWtpeWp4aHR4YmFqd2ZmdmJkIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTAzNzg1NiwiZXhwIjoyMDkwNjEzODU2fQ.l1HnNM6FbTTZBeHMAj7IPH8xEZXEhVILH8tWs18n5qc';
+
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+let currentRunId = null;
+let currentRunData = null;
+let testResults = {};
+let currentCategory = null;
+let currentView = 'categories';
+
+// ==========================================
+// TEST CASES DATA
+// ==========================================
+const TEST_CASES = [
+  {
+    id: 'loading',
+    name: 'تحميل التطبيق',
+    nameEn: 'App Loading',
+    icon: '🚀',
+    color: 'blue',
+    tests: [
+      { id: 'LOAD-001', title: 'تهيئة محرك Flutter', priority: 'critical',
+        steps: ['افتح التطبيق في المتصفح (Chrome)', 'انتظر حتى يكتمل التحميل', 'تحقق من ظهور شاشة البداية او تسجيل الدخول'],
+        expected: 'يظهر التطبيق بشكل صحيح بدون شاشة بيضاء فارغة' },
+      { id: 'LOAD-002', title: 'سرعة التحميل الاولي', priority: 'critical',
+        steps: ['امسح الكاش (Ctrl+Shift+Delete)', 'افتح التطبيق وابدا العد', 'سجل الوقت حتى ظهور اول شاشة تفاعلية'],
+        expected: 'يحمل التطبيق خلال 60 ثانية كحد اقصى' },
+      { id: 'LOAD-003', title: 'عرض محتوى غير فارغ', priority: 'critical',
+        steps: ['افتح التطبيق', 'انتظر اكتمال التحميل', 'تحقق من وجود عناصر تفاعلية (ازرار، حقول)'],
+        expected: 'الصفحة تعرض محتوى تفاعلي وليست فارغة' },
+      { id: 'LOAD-004', title: 'التحميل بدون اخطاء Console', priority: 'high',
+        steps: ['افتح DevTools (F12)', 'انتقل لتبويب Console', 'حمل التطبيق من جديد', 'راقب الاخطاء الحمراء'],
+        expected: 'لا توجد اخطاء جافاسكريبت حرجة (fatal errors)' },
+    ]
+  },
+  {
+    id: 'auth',
+    name: 'تسجيل الدخول',
+    nameEn: 'Authentication',
+    icon: '🔐',
+    color: 'purple',
+    tests: [
+      { id: 'AUTH-001', title: 'عرض حقل رقم الجوال', priority: 'critical',
+        steps: ['افتح صفحة تسجيل الدخول', 'تحقق من ظهور حقل ادخال رقم الجوال'],
+        expected: 'يظهر حقل ادخال رقم الجوال بشكل واضح' },
+      { id: 'AUTH-002', title: 'رفض رقم جوال قصير', priority: 'high',
+        steps: ['ادخل رقم قصير مثل "050"', 'اضغط تسجيل الدخول'],
+        expected: 'يظهر خطأ توضيحي ولا ينتقل لشاشة OTP' },
+      { id: 'AUTH-003', title: 'رفض صيغة رقم غير سعودي', priority: 'high',
+        steps: ['ادخل رقم بصيغة غير سعودية مثل "0100000001"', 'اضغط تسجيل الدخول'],
+        expected: 'يظهر خطأ توضيحي بان الرقم غير صالح' },
+      { id: 'AUTH-004', title: 'رقم صحيح يعرض شاشة OTP', priority: 'critical',
+        steps: ['ادخل رقم جوال سعودي صحيح (05xxxxxxxx)', 'اضغط تسجيل الدخول'],
+        expected: 'تظهر شاشة ادخال رمز التحقق OTP' },
+      { id: 'AUTH-005', title: 'تسجيل الدخول الكامل', priority: 'critical',
+        steps: ['ادخل رقم الجوال الصحيح', 'ادخل رمز OTP الصحيح', 'اختر المتجر (ان وجد)', 'تحقق من الوصول لشاشة POS'],
+        expected: 'يتم تسجيل الدخول والانتقال لنقطة البيع بنجاح' },
+      { id: 'AUTH-006', title: 'زر تغيير الرقم', priority: 'medium',
+        steps: ['اوصل لشاشة OTP', 'اضغط "تغيير الرقم"', 'تحقق من العودة لحقل الجوال'],
+        expected: 'يعود لشاشة ادخال رقم الجوال ويمكن ادخال رقم جديد' },
+      { id: 'AUTH-007', title: 'اختيار المتجر', priority: 'critical',
+        steps: ['سجل الدخول بنجاح', 'اذا ظهرت قائمة المتاجر، اختر متجر', 'تحقق من الانتقال للتطبيق'],
+        expected: 'يتم اختيار المتجر والانتقال لنقطة البيع' },
+      { id: 'AUTH-008', title: 'تسجيل الخروج', priority: 'high',
+        steps: ['من داخل التطبيق، انتقل للملف الشخصي', 'اضغط تسجيل الخروج', 'تحقق من العودة لشاشة الدخول'],
+        expected: 'يتم تسجيل الخروج والعودة لشاشة الدخول' },
+    ]
+  },
+  {
+    id: 'pos',
+    name: 'نقطة البيع (POS)',
+    nameEn: 'Point of Sale',
+    icon: '🛒',
+    color: 'green',
+    tests: [
+      { id: 'POS-001', title: 'تحميل شاشة نقطة البيع', priority: 'critical',
+        steps: ['سجل الدخول', 'انتقل لشاشة /pos', 'تحقق من ظهور قائمة المنتجات'],
+        expected: 'تظهر شاشة POS مع شبكة المنتجات وسلة المشتريات' },
+      { id: 'POS-002', title: 'عرض المنتجات في الشبكة', priority: 'critical',
+        steps: ['افتح شاشة POS', 'تحقق من ظهور المنتجات مع الصور والاسعار', 'تحقق من تصنيف المنتجات'],
+        expected: 'المنتجات تظهر بشكل منظم مع صور واسعار صحيحة' },
+      { id: 'POS-003', title: 'البحث عن منتج', priority: 'critical',
+        steps: ['افتح شاشة POS', 'اكتب اسم منتج في حقل البحث', 'تحقق من نتائج البحث'],
+        expected: 'تظهر المنتجات المطابقة للبحث فورا' },
+      { id: 'POS-004', title: 'اضافة منتج للسلة', priority: 'critical',
+        steps: ['اضغط على منتج في الشبكة', 'تحقق من اضافته للسلة', 'تحقق من ظهور الكمية والسعر'],
+        expected: 'يضاف المنتج للسلة مع الكمية والسعر الصحيح' },
+      { id: 'POS-005', title: 'تعديل الكمية في السلة', priority: 'critical',
+        steps: ['اضف منتج للسلة', 'زد الكمية بالضغط على +', 'انقص الكمية بالضغط على -', 'تحقق من تحديث المجموع'],
+        expected: 'الكمية تتغير والمجموع يتحدث تلقائيا' },
+      { id: 'POS-006', title: 'حذف منتج من السلة', priority: 'high',
+        steps: ['اضف منتج للسلة', 'اضغط زر الحذف بجانب المنتج', 'تحقق من ازالته'],
+        expected: 'يتم حذف المنتج من السلة وتحديث المجموع' },
+      { id: 'POS-007', title: 'مسح السلة بالكامل', priority: 'high',
+        steps: ['اضف عدة منتجات للسلة', 'اضغط زر مسح السلة', 'تحقق من افراغ السلة'],
+        expected: 'يتم مسح جميع المنتجات والعودة لحالة فارغة' },
+      { id: 'POS-008', title: 'حساب المجموع والضريبة', priority: 'critical',
+        steps: ['اضف عدة منتجات بكميات مختلفة', 'تحقق من المجموع الفرعي', 'تحقق من مبلغ الضريبة', 'تحقق من المجموع الكلي'],
+        expected: 'المجموع = (سعر × كمية) لكل منتج + الضريبة بشكل صحيح' },
+      { id: 'POS-009', title: 'تصفية المنتجات بالتصنيف', priority: 'high',
+        steps: ['اضغط على تصنيف معين', 'تحقق من عرض منتجات التصنيف فقط', 'اضغط "الكل" للعودة'],
+        expected: 'يتم تصفية المنتجات حسب التصنيف المحدد' },
+      { id: 'POS-010', title: 'مسح الباركود (Barcode)', priority: 'high',
+        steps: ['وصل قارئ باركود او استخدم لوحة المفاتيح', 'امسح باركود منتج', 'تحقق من اضافته للسلة تلقائيا'],
+        expected: 'يتم التعرف على المنتج واضافته للسلة فورا' },
+      { id: 'POS-011', title: 'البيع السريع', priority: 'medium',
+        steps: ['انتقل لـ /pos/quick-sale', 'تحقق من وضع البيع السريع', 'اجر عملية بيع'],
+        expected: 'يعمل وضع البيع السريع بشكل صحيح' },
+      { id: 'POS-012', title: 'المفضلة', priority: 'medium',
+        steps: ['انتقل لـ /pos/favorites', 'تحقق من عرض المنتجات المفضلة', 'اضف/احذف من المفضلة'],
+        expected: 'تعمل قائمة المفضلة بشكل صحيح' },
+    ]
+  },
+  {
+    id: 'payment',
+    name: 'الدفع',
+    nameEn: 'Payment',
+    icon: '💳',
+    color: 'emerald',
+    tests: [
+      { id: 'PAY-001', title: 'الانتقال لشاشة الدفع', priority: 'critical',
+        steps: ['اضف منتجات للسلة', 'اضغط زر الدفع/الانتقال للمحاسبة', 'تحقق من عرض المبلغ الاجمالي'],
+        expected: 'تظهر شاشة الدفع مع المبلغ المطلوب' },
+      { id: 'PAY-002', title: 'الدفع نقدا', priority: 'critical',
+        steps: ['في شاشة الدفع اختر "نقدي"', 'ادخل المبلغ المدفوع', 'تحقق من حساب الباقي', 'اكد العملية'],
+        expected: 'يتم الدفع وحساب الباقي بشكل صحيح' },
+      { id: 'PAY-003', title: 'الدفع بالبطاقة', priority: 'critical',
+        steps: ['في شاشة الدفع اختر "بطاقة"', 'تحقق من الاتصال بجهاز الدفع', 'اكمل عملية الدفع'],
+        expected: 'يتم الدفع بالبطاقة بنجاح' },
+      { id: 'PAY-004', title: 'الدفع المقسم', priority: 'high',
+        steps: ['في شاشة الدفع اختر "دفع مقسم"', 'ادخل مبلغ نقدي', 'ادخل مبلغ بطاقة', 'تحقق من ان المجموع يساوي المطلوب'],
+        expected: 'يتم تقسيم الدفع بين الطرق المختلفة بشكل صحيح' },
+      { id: 'PAY-005', title: 'الدفع على حساب العميل', priority: 'high',
+        steps: ['اختر عميل له حساب ائتماني', 'اختر "دفع على الحساب"', 'تحقق من رصيد العميل المتاح', 'اكد العملية'],
+        expected: 'يتم خصم المبلغ من حساب العميل' },
+      { id: 'PAY-006', title: 'طباعة الايصال', priority: 'critical',
+        steps: ['اكمل عملية دفع', 'تحقق من ظهور شاشة الايصال', 'اضغط طباعة', 'تحقق من الايصال المطبوع'],
+        expected: 'يتم طباعة ايصال يحتوي على كل التفاصيل (العناصر، الضريبة، المجموع، QR)' },
+      { id: 'PAY-007', title: 'ارسال الايصال واتساب', priority: 'medium',
+        steps: ['بعد الدفع، اضغط "ارسال واتساب"', 'تحقق من فتح نافذة الارسال', 'تحقق من محتوى الرسالة'],
+        expected: 'يتم فتح واتساب مع ايصال مرفق' },
+      { id: 'PAY-008', title: 'موافقة المدير', priority: 'high',
+        steps: ['حاول اجراء عملية تحتاج موافقة مدير', 'تحقق من ظهور شاشة الموافقة', 'ادخل رمز المدير'],
+        expected: 'تظهر شاشة طلب موافقة المدير وتعمل بشكل صحيح' },
+    ]
+  },
+  {
+    id: 'sales',
+    name: 'ادارة المبيعات',
+    nameEn: 'Sales Management',
+    icon: '📊',
+    color: 'orange',
+    tests: [
+      { id: 'SALE-001', title: 'عرض سجل المبيعات', priority: 'high',
+        steps: ['انتقل لـ /sales', 'تحقق من عرض قائمة المبيعات', 'تحقق من التفاصيل (التاريخ، المبلغ، العميل)'],
+        expected: 'تظهر قائمة المبيعات مرتبة بالتاريخ مع كل التفاصيل' },
+      { id: 'SALE-002', title: 'البحث في المبيعات', priority: 'high',
+        steps: ['في صفحة المبيعات، استخدم البحث', 'ابحث برقم الايصال', 'ابحث باسم العميل'],
+        expected: 'تظهر نتائج البحث الصحيحة' },
+      { id: 'SALE-003', title: 'تفاصيل عملية بيع', priority: 'high',
+        steps: ['اضغط على عملية بيع من القائمة', 'تحقق من عرض التفاصيل الكاملة', 'تحقق من العناصر والاسعار والضريبة'],
+        expected: 'تظهر كل تفاصيل عملية البيع بشكل صحيح' },
+      { id: 'SALE-004', title: 'اعادة طباعة الايصال', priority: 'medium',
+        steps: ['انتقل لـ /sales/reprint', 'ابحث عن عملية سابقة', 'اضغط اعادة طباعة'],
+        expected: 'يتم طباعة نسخة من الايصال الاصلي' },
+      { id: 'SALE-005', title: 'تبديل/استبدال', priority: 'high',
+        steps: ['انتقل لـ /sales/exchange', 'ابحث عن عملية بيع سابقة', 'اختر منتج للاستبدال', 'اختر المنتج البديل'],
+        expected: 'يتم الاستبدال وحساب فرق السعر بشكل صحيح' },
+      { id: 'SALE-006', title: 'الفواتير المعلقة', priority: 'high',
+        steps: ['من POS، اضغط "تعليق الفاتورة"', 'انتقل لـ /pos/hold-invoices', 'تحقق من ظهور الفاتورة المعلقة', 'استرجع الفاتورة'],
+        expected: 'يتم حفظ واسترجاع الفواتير المعلقة بنجاح' },
+    ]
+  },
+  {
+    id: 'returns',
+    name: 'المرتجعات',
+    nameEn: 'Returns & Refunds',
+    icon: '↩️',
+    color: 'red',
+    tests: [
+      { id: 'RET-001', title: 'عرض شاشة المرتجعات', priority: 'high',
+        steps: ['انتقل لـ /returns', 'تحقق من عرض قائمة المرتجعات'],
+        expected: 'تظهر شاشة المرتجعات مع خيارات البحث' },
+      { id: 'RET-002', title: 'طلب ارجاع', priority: 'critical',
+        steps: ['انتقل لـ /returns/request', 'ابحث عن عملية بيع سابقة', 'اختر المنتجات للارجاع', 'حدد الكمية'],
+        expected: 'يتم انشاء طلب ارجاع بنجاح' },
+      { id: 'RET-003', title: 'تحديد سبب الارجاع', priority: 'high',
+        steps: ['من طلب الارجاع، اختر سبب', 'اختر من الاسباب المحددة (معيب، خطأ، تغيير رأي)', 'اضف ملاحظة اضافية'],
+        expected: 'يتم تسجيل سبب الارجاع مع الطلب' },
+      { id: 'RET-004', title: 'معالجة الاسترداد', priority: 'critical',
+        steps: ['اكمل طلب الارجاع', 'تحقق من مبلغ الاسترداد', 'اختر طريقة الاسترداد', 'اكد العملية'],
+        expected: 'يتم استرداد المبلغ بالطريقة المختارة' },
+      { id: 'RET-005', title: 'طباعة ايصال الارجاع', priority: 'high',
+        steps: ['بعد اتمام الارجاع', 'تحقق من ظهور ايصال الارجاع', 'اطبع الايصال'],
+        expected: 'يتم طباعة ايصال ارجاع مفصل' },
+      { id: 'RET-006', title: 'الغاء عملية بيع (Void)', priority: 'high',
+        steps: ['انتقل لـ /void-transaction', 'ابحث عن عملية بيع', 'اطلب الغاء العملية', 'ادخل سبب الالغاء'],
+        expected: 'يتم الغاء العملية مع موافقة المدير' },
+      { id: 'RET-007', title: 'تحديث المخزون بعد الارجاع', priority: 'critical',
+        steps: ['سجل كمية المنتج قبل الارجاع', 'اكمل عملية ارجاع', 'تحقق من كمية المنتج بعد الارجاع'],
+        expected: 'يزداد رصيد المخزون بالكمية المرتجعة' },
+    ]
+  },
+  {
+    id: 'customers',
+    name: 'ادارة العملاء',
+    nameEn: 'Customer Management',
+    icon: '👥',
+    color: 'cyan',
+    tests: [
+      { id: 'CUST-001', title: 'عرض قائمة العملاء', priority: 'high',
+        steps: ['انتقل لـ /customers', 'تحقق من عرض قائمة العملاء', 'تحقق من المعلومات (الاسم، الجوال، الرصيد)'],
+        expected: 'تظهر قائمة العملاء مع كل المعلومات' },
+      { id: 'CUST-002', title: 'البحث عن عميل', priority: 'high',
+        steps: ['في صفحة العملاء استخدم البحث', 'ابحث بالاسم', 'ابحث برقم الجوال'],
+        expected: 'تظهر نتائج البحث المطابقة' },
+      { id: 'CUST-003', title: 'تفاصيل العميل', priority: 'high',
+        steps: ['اضغط على عميل من القائمة', 'تحقق من عرض الملف الشخصي', 'تحقق من سجل المعاملات'],
+        expected: 'تظهر كل تفاصيل العميل وسجل معاملاته' },
+      { id: 'CUST-004', title: 'حسابات العملاء', priority: 'high',
+        steps: ['انتقل لـ /customers/accounts', 'تحقق من عرض حسابات الائتمان', 'تحقق من الارصدة'],
+        expected: 'تظهر حسابات العملاء مع الارصدة الصحيحة' },
+      { id: 'CUST-005', title: 'ديون العملاء', priority: 'high',
+        steps: ['انتقل لـ /customers/debt', 'تحقق من عرض المبالغ المستحقة', 'تحقق من تحليل اعمار الديون'],
+        expected: 'تظهر ملخص الديون وتفاصيل كل عميل مدين' },
+      { id: 'CUST-006', title: 'انشاء فاتورة للعميل', priority: 'medium',
+        steps: ['انتقل لـ /customers/create-invoice', 'اختر عميل', 'اضف عناصر للفاتورة', 'احفظ الفاتورة'],
+        expected: 'يتم انشاء الفاتورة وربطها بحساب العميل' },
+      { id: 'CUST-007', title: 'تحليلات العملاء', priority: 'medium',
+        steps: ['انتقل لـ /customers/analytics', 'تحقق من عرض الاحصائيات', 'تحقق من الرسوم البيانية'],
+        expected: 'تظهر تحليلات العملاء (العدد، المبيعات، الولاء)' },
+      { id: 'CUST-008', title: 'مجموعات العملاء', priority: 'low',
+        steps: ['انتقل لـ /customers/groups', 'تحقق من عرض المجموعات', 'انشئ مجموعة جديدة'],
+        expected: 'يتم عرض وادارة مجموعات العملاء' },
+    ]
+  },
+  {
+    id: 'products',
+    name: 'ادارة المنتجات',
+    nameEn: 'Product Management',
+    icon: '📦',
+    color: 'amber',
+    tests: [
+      { id: 'PROD-001', title: 'عرض كتالوج المنتجات', priority: 'high',
+        steps: ['انتقل لـ /products', 'تحقق من عرض قائمة المنتجات', 'تحقق من الصور والاسعار والتصنيفات'],
+        expected: 'تظهر المنتجات مع كل التفاصيل بشكل منظم' },
+      { id: 'PROD-002', title: 'اضافة منتج سريع', priority: 'high',
+        steps: ['انتقل لـ /products/quick-add', 'ادخل اسم المنتج والسعر', 'اختر التصنيف', 'احفظ المنتج'],
+        expected: 'يتم اضافة المنتج ويظهر في القائمة' },
+      { id: 'PROD-003', title: 'اضافة منتج كامل', priority: 'high',
+        steps: ['انتقل لـ /products/add', 'ادخل كل التفاصيل (الاسم، الباركود، السعر، الصورة)', 'احفظ المنتج'],
+        expected: 'يتم حفظ المنتج بكل تفاصيله' },
+      { id: 'PROD-004', title: 'تعديل سعر منتج', priority: 'high',
+        steps: ['اختر منتج من القائمة', 'عدل السعر', 'احفظ التغيير', 'تحقق من تحديث السعر في POS'],
+        expected: 'يتم تحديث السعر ويظهر الجديد فورا' },
+      { id: 'PROD-005', title: 'طباعة باركود', priority: 'medium',
+        steps: ['انتقل لـ /products/print-barcode', 'اختر منتجات', 'اختر صيغة الباركود', 'اطبع'],
+        expected: 'يتم طباعة ملصقات الباركود بشكل صحيح' },
+      { id: 'PROD-006', title: 'عرض التصنيفات', priority: 'high',
+        steps: ['انتقل لـ /products/categories-view', 'تحقق من شجرة التصنيفات', 'تحقق من عدد المنتجات لكل تصنيف'],
+        expected: 'تظهر التصنيفات بشكل هرمي مع اعداد المنتجات' },
+      { id: 'PROD-007', title: 'ملصقات الاسعار', priority: 'low',
+        steps: ['انتقل لـ /products/price-labels', 'اختر منتجات', 'اختر تنسيق الملصق', 'اطبع'],
+        expected: 'يتم طباعة ملصقات الاسعار بالتنسيق المختار' },
+      { id: 'PROD-008', title: 'قوائم الاسعار', priority: 'medium',
+        steps: ['انتقل لـ /products/price-lists', 'تحقق من عرض قوائم الاسعار', 'انشئ قائمة جديدة'],
+        expected: 'يتم ادارة قوائم الاسعار المختلفة' },
+    ]
+  },
+  {
+    id: 'inventory',
+    name: 'ادارة المخزون',
+    nameEn: 'Inventory Management',
+    icon: '🏪',
+    color: 'teal',
+    tests: [
+      { id: 'INV-001', title: 'عرض حالة المخزون', priority: 'high',
+        steps: ['انتقل لـ /inventory', 'تحقق من عرض المنتجات مع الكميات', 'تحقق من حالة المخزون (متوفر، منخفض، نفد)'],
+        expected: 'تظهر حالة المخزون لكل منتج بوضوح' },
+      { id: 'INV-002', title: 'اضافة مخزون', priority: 'critical',
+        steps: ['انتقل لـ /inventory/add', 'اختر منتج', 'ادخل الكمية المضافة', 'اختر السبب', 'احفظ'],
+        expected: 'يزداد رصيد المخزون بالكمية المضافة' },
+      { id: 'INV-003', title: 'سحب من المخزون', priority: 'high',
+        steps: ['انتقل لـ /inventory/remove', 'اختر منتج', 'ادخل الكمية المسحوبة', 'اختر السبب', 'احفظ'],
+        expected: 'ينقص رصيد المخزون بالكمية المسحوبة' },
+      { id: 'INV-004', title: 'تحويل المخزون بين الفروع', priority: 'high',
+        steps: ['انتقل لـ /inventory/transfer', 'اختر الفرع المصدر والوجهة', 'اختر المنتجات والكميات', 'اكد التحويل'],
+        expected: 'يتم تحويل المخزون بين الفروع بشكل صحيح' },
+      { id: 'INV-005', title: 'جرد المخزون', priority: 'high',
+        steps: ['انتقل لـ /inventory/stock-take', 'ابدا جلسة جرد', 'ادخل الكميات الفعلية', 'اكمل الجرد'],
+        expected: 'يتم تسجيل الفروقات وتحديث المخزون' },
+      { id: 'INV-006', title: 'الاتلاف والهدر', priority: 'medium',
+        steps: ['انتقل لـ /inventory/wastage', 'سجل كمية تالفة', 'اختر السبب', 'احفظ'],
+        expected: 'يتم تسجيل الاتلاف وخصم الكمية من المخزون' },
+      { id: 'INV-007', title: 'تنبيهات المخزون', priority: 'high',
+        steps: ['انتقل لـ /inventory/alerts', 'تحقق من عرض المنتجات منخفضة المخزون', 'تحقق من التنبيهات'],
+        expected: 'تظهر تنبيهات للمنتجات التي وصلت لحد اعادة الطلب' },
+      { id: 'INV-008', title: 'تتبع الصلاحية', priority: 'medium',
+        steps: ['انتقل لـ /inventory/expiry-tracking', 'تحقق من المنتجات القريبة من الانتهاء', 'تحقق من الترتيب بالتاريخ'],
+        expected: 'تظهر المنتجات مرتبة بتاريخ الصلاحية مع تنبيهات' },
+      { id: 'INV-009', title: 'البضائع التالفة', priority: 'medium',
+        steps: ['انتقل لـ /inventory/damaged-goods', 'سجل بضاعة تالفة', 'ارفق صورة ان امكن'],
+        expected: 'يتم تسجيل البضائع التالفة وخصمها من المخزون' },
+    ]
+  },
+  {
+    id: 'shifts',
+    name: 'ادارة الورديات',
+    nameEn: 'Shift Management',
+    icon: '⏰',
+    color: 'violet',
+    tests: [
+      { id: 'SHIFT-001', title: 'فتح وردية جديدة', priority: 'critical',
+        steps: ['انتقل لـ /shifts/open', 'ادخل المبلغ الافتتاحي', 'فصل المبلغ حسب الفئات ان امكن', 'اكد فتح الوردية'],
+        expected: 'يتم فتح الوردية وتسجيل المبلغ الافتتاحي' },
+      { id: 'SHIFT-002', title: 'اغلاق الوردية', priority: 'critical',
+        steps: ['انتقل لـ /shifts/close', 'ادخل المبلغ الفعلي في الدرج', 'تحقق من ملخص الوردية', 'اكد اغلاق الوردية'],
+        expected: 'يتم اغلاق الوردية وحساب الفرق بين المتوقع والفعلي' },
+      { id: 'SHIFT-003', title: 'ملخص الوردية', priority: 'high',
+        steps: ['انتقل لـ /shifts/summary', 'اختر وردية سابقة', 'تحقق من الاحصائيات (المبيعات، المرتجعات، صافي)'],
+        expected: 'يظهر ملخص شامل للوردية مع كل الاحصائيات' },
+      { id: 'SHIFT-004', title: 'الملخص اليومي', priority: 'high',
+        steps: ['انتقل لـ /shifts/daily-summary', 'تحقق من تجميع كل الورديات لليوم', 'تحقق من المؤشرات اليومية'],
+        expected: 'يظهر ملخص يومي شامل يجمع كل الورديات' },
+      { id: 'SHIFT-005', title: 'ادخال/اخراج النقد', priority: 'high',
+        steps: ['انتقل لـ /shifts/cash-in-out', 'سجل عملية ادخال نقد', 'سجل عملية اخراج نقد', 'تحقق من تحديث الرصيد'],
+        expected: 'يتم تسجيل حركات النقد وتحديث رصيد الدرج' },
+      { id: 'SHIFT-006', title: 'منع فتح وردية مكررة', priority: 'high',
+        steps: ['افتح وردية', 'حاول فتح وردية اخرى بدون اغلاق الاولى'],
+        expected: 'يظهر تنبيه بوجود وردية مفتوحة ويمنع الفتح' },
+      { id: 'SHIFT-007', title: 'عرض سجل الورديات', priority: 'medium',
+        steps: ['انتقل لـ /shifts', 'تحقق من عرض كل الورديات السابقة', 'اضغط على وردية لعرض التفاصيل'],
+        expected: 'يظهر سجل كامل للورديات مع تفاصيل كل واحدة' },
+    ]
+  },
+  {
+    id: 'purchases',
+    name: 'المشتريات والموردين',
+    nameEn: 'Purchases & Suppliers',
+    icon: '🏭',
+    color: 'slate',
+    tests: [
+      { id: 'PUR-001', title: 'قائمة المشتريات', priority: 'high',
+        steps: ['انتقل لـ /purchases', 'تحقق من عرض اوامر الشراء'],
+        expected: 'تظهر قائمة اوامر الشراء مرتبة' },
+      { id: 'PUR-002', title: 'انشاء امر شراء جديد', priority: 'high',
+        steps: ['انتقل لـ /purchases/new', 'اختر المورد', 'اضف المنتجات والكميات', 'احفظ الامر'],
+        expected: 'يتم انشاء امر شراء جديد بنجاح' },
+      { id: 'PUR-003', title: 'استلام البضائع', priority: 'critical',
+        steps: ['انتقل لـ /cashier-receiving', 'اختر امر شراء', 'سجل الكميات المستلمة', 'اكد الاستلام'],
+        expected: 'يتم تسجيل الاستلام وتحديث المخزون' },
+      { id: 'PUR-004', title: 'قائمة الموردين', priority: 'medium',
+        steps: ['انتقل لـ /suppliers', 'تحقق من عرض الموردين', 'ابحث عن مورد'],
+        expected: 'تظهر قائمة الموردين مع معلومات التواصل' },
+      { id: 'PUR-005', title: 'اضافة مورد جديد', priority: 'medium',
+        steps: ['انتقل لـ /suppliers/new', 'ادخل بيانات المورد', 'احفظ'],
+        expected: 'يتم اضافة المورد الجديد للقائمة' },
+      { id: 'PUR-006', title: 'طلب شراء', priority: 'medium',
+        steps: ['انتقل لـ /purchase-request', 'انشئ طلب شراء', 'اختر المنتجات والكميات', 'ارسل الطلب'],
+        expected: 'يتم انشاء طلب الشراء وارساله' },
+      { id: 'PUR-007', title: 'مرتجعات الموردين', priority: 'medium',
+        steps: ['انتقل لـ /purchases/supplier-returns', 'انشئ طلب ارجاع للمورد', 'اختر المنتجات'],
+        expected: 'يتم تسجيل مرتجعات الموردين' },
+    ]
+  },
+  {
+    id: 'offers',
+    name: 'العروض والتخفيضات',
+    nameEn: 'Offers & Promotions',
+    icon: '🎁',
+    color: 'pink',
+    tests: [
+      { id: 'OFF-001', title: 'العروض النشطة', priority: 'high',
+        steps: ['انتقل لـ /offers/active', 'تحقق من عرض العروض الحالية', 'تحقق من التفاصيل (نسبة الخصم، الفترة)'],
+        expected: 'تظهر العروض النشطة مع كل التفاصيل' },
+      { id: 'OFF-002', title: 'كوبونات الخصم', priority: 'high',
+        steps: ['انتقل لـ /offers/coupon', 'انشئ كوبون جديد', 'حدد نسبة الخصم والصلاحية', 'احفظ'],
+        expected: 'يتم انشاء الكوبون ويمكن استخدامه عند الدفع' },
+      { id: 'OFF-003', title: 'الباقات (Bundles)', priority: 'medium',
+        steps: ['انتقل لـ /offers/bundles', 'انشئ باقة منتجات', 'حدد السعر المخفض', 'احفظ'],
+        expected: 'يتم انشاء الباقة وتطبق تلقائيا عند الشراء' },
+      { id: 'OFF-004', title: 'تطبيق العرض في POS', priority: 'critical',
+        steps: ['فعل عرض على منتج معين', 'اذهب لـ POS واضف المنتج', 'تحقق من تطبيق الخصم تلقائيا'],
+        expected: 'يطبق الخصم تلقائيا على المنتج في السلة' },
+      { id: 'OFF-005', title: 'العروض الذكية', priority: 'medium',
+        steps: ['انتقل لـ /promotions', 'تحقق من العروض المقترحة', 'فعل عرض مقترح'],
+        expected: 'تعمل العروض الذكية وتقدم اقتراحات مفيدة' },
+      { id: 'OFF-006', title: 'برنامج الولاء', priority: 'medium',
+        steps: ['انتقل لـ /loyalty', 'تحقق من اعدادات الولاء', 'تحقق من رصيد نقاط عميل'],
+        expected: 'يعمل برنامج الولاء ويسجل النقاط بشكل صحيح' },
+    ]
+  },
+  {
+    id: 'reports',
+    name: 'التقارير',
+    nameEn: 'Reports',
+    icon: '📈',
+    color: 'sky',
+    tests: [
+      { id: 'RPT-001', title: 'صفحة التقارير الرئيسية', priority: 'high',
+        steps: ['انتقل لـ /reports', 'تحقق من عرض كل انواع التقارير', 'تحقق من امكانية الوصول لكل تقرير'],
+        expected: 'تظهر صفحة التقارير مع كل الانواع المتاحة' },
+      { id: 'RPT-002', title: 'تقرير المبيعات اليومية', priority: 'critical',
+        steps: ['انتقل لـ /reports/daily-sales', 'اختر فترة زمنية', 'تحقق من البيانات والرسوم البيانية'],
+        expected: 'يظهر تقرير مبيعات يومي صحيح مع رسوم بيانية' },
+      { id: 'RPT-003', title: 'تقرير المنتجات الاكثر مبيعا', priority: 'high',
+        steps: ['انتقل لـ /reports/top-products', 'تحقق من الترتيب', 'تحقق من الارقام'],
+        expected: 'يظهر ترتيب المنتجات حسب المبيعات بدقة' },
+      { id: 'RPT-004', title: 'تقرير التدفق النقدي', priority: 'high',
+        steps: ['انتقل لـ /reports/cash-flow', 'تحقق من التفاصيل (الوارد، الصادر، الصافي)'],
+        expected: 'يظهر تقرير تدفق نقدي دقيق ومتوازن' },
+      { id: 'RPT-005', title: 'تقرير المدفوعات', priority: 'high',
+        steps: ['انتقل لـ /reports/payments', 'تحقق من التقسيم حسب طريقة الدفع'],
+        expected: 'يظهر تقرير مفصل بكل طرق الدفع' },
+      { id: 'RPT-006', title: 'تقرير الضريبة/VAT', priority: 'critical',
+        steps: ['انتقل لـ /reports/tax او /reports/vat', 'تحقق من ملخص الضريبة', 'تحقق من الدقة'],
+        expected: 'يظهر تقرير ضريبي دقيق متوافق مع المتطلبات' },
+      { id: 'RPT-007', title: 'تقرير المخزون', priority: 'high',
+        steps: ['انتقل لـ /reports/inventory', 'تحقق من حالة المخزون', 'تحقق من القيمة الاجمالية'],
+        expected: 'يظهر تقرير مخزون شامل ودقيق' },
+      { id: 'RPT-008', title: 'تقرير العملاء', priority: 'medium',
+        steps: ['انتقل لـ /reports/customers', 'تحقق من احصائيات العملاء'],
+        expected: 'يظهر تقرير عملاء مع احصائيات مفيدة' },
+      { id: 'RPT-009', title: 'التقرير المخصص', priority: 'medium',
+        steps: ['انتقل لـ /reports/custom', 'اختر معايير التقرير', 'ولد التقرير'],
+        expected: 'يتم انشاء تقرير مخصص حسب المعايير المحددة' },
+      { id: 'RPT-010', title: 'تصدير التقارير', priority: 'high',
+        steps: ['افتح اي تقرير', 'اضغط تصدير', 'اختر الصيغة (PDF, CSV, Excel)'],
+        expected: 'يتم تصدير التقرير بالصيغة المختارة بنجاح' },
+    ]
+  },
+  {
+    id: 'settings',
+    name: 'الاعدادات',
+    nameEn: 'Settings',
+    icon: '⚙️',
+    color: 'gray',
+    tests: [
+      { id: 'SET-001', title: 'صفحة الاعدادات الرئيسية', priority: 'high',
+        steps: ['انتقل لـ /settings', 'تحقق من عرض كل اقسام الاعدادات'],
+        expected: 'تظهر كل خيارات الاعدادات بشكل منظم' },
+      { id: 'SET-002', title: 'معلومات المتجر', priority: 'high',
+        steps: ['انتقل لـ /settings/store', 'عدل اسم المتجر', 'عدل العنوان', 'احفظ'],
+        expected: 'يتم حفظ معلومات المتجر وتظهر في الايصالات' },
+      { id: 'SET-003', title: 'اعدادات الضريبة', priority: 'critical',
+        steps: ['انتقل لـ /settings/tax', 'عدل نسبة الضريبة', 'تحقق من تطبيقها في POS'],
+        expected: 'يتم تحديث نسبة الضريبة وتطبق فورا' },
+      { id: 'SET-004', title: 'اعدادات الايصال', priority: 'high',
+        steps: ['انتقل لـ /settings/receipt', 'عدل رأسية وتذييل الايصال', 'احفظ واطبع ايصال تجريبي'],
+        expected: 'يظهر الايصال بالتعديلات الجديدة' },
+      { id: 'SET-005', title: 'اعدادات الطابعة', priority: 'high',
+        steps: ['انتقل لـ /settings/printer', 'اختر نوع الطابعة', 'اختبر الطباعة'],
+        expected: 'يتم ربط الطابعة والطباعة التجريبية بنجاح' },
+      { id: 'SET-006', title: 'ادارة المستخدمين', priority: 'critical',
+        steps: ['انتقل لـ /settings/users', 'تحقق من قائمة المستخدمين', 'عدل صلاحيات مستخدم'],
+        expected: 'يتم ادارة المستخدمين والصلاحيات بشكل صحيح' },
+      { id: 'SET-007', title: 'النسخ الاحتياطي', priority: 'high',
+        steps: ['انتقل لـ /settings/backup', 'انشئ نسخة احتياطية', 'تحقق من حالة النسخة'],
+        expected: 'يتم انشاء نسخة احتياطية بنجاح' },
+      { id: 'SET-008', title: 'تغيير اللغة', priority: 'high',
+        steps: ['انتقل لـ /settings/language', 'غير اللغة للانجليزية', 'تحقق من تغيير الواجهة', 'ارجع للعربية'],
+        expected: 'تتغير لغة الواجهة بالكامل بدون اخطاء' },
+      { id: 'SET-009', title: 'تغيير المظهر (الثيم)', priority: 'medium',
+        steps: ['انتقل لـ /settings/theme', 'غير للوضع الداكن', 'تحقق من تغيير الالوان', 'ارجع للوضع الفاتح'],
+        expected: 'يتغير المظهر بالكامل بدون مشاكل في العرض' },
+      { id: 'SET-010', title: 'اختصارات لوحة المفاتيح', priority: 'low',
+        steps: ['انتقل لـ /settings/keyboard-shortcuts', 'تحقق من عرض الاختصارات', 'جرب بعض الاختصارات في POS'],
+        expected: 'تعمل اختصارات لوحة المفاتيح بشكل صحيح' },
+      { id: 'SET-011', title: 'التوافق مع ZATCA', priority: 'critical',
+        steps: ['انتقل لـ /settings/zatca', 'تحقق من اعدادات الفوترة الالكترونية', 'تحقق من QR Code في الايصال'],
+        expected: 'الاعدادات متوافقة مع متطلبات هيئة الزكاة والدخل' },
+      { id: 'SET-012', title: 'اعدادات الامان', priority: 'high',
+        steps: ['انتقل لـ /settings/security', 'تحقق من خيارات الامان', 'فعل الحماية الاضافية'],
+        expected: 'تعمل اعدادات الامان بشكل صحيح' },
+    ]
+  },
+  {
+    id: 'ai',
+    name: 'الذكاء الاصطناعي',
+    nameEn: 'AI Features',
+    icon: '🤖',
+    color: 'indigo',
+    tests: [
+      { id: 'AI-001', title: 'المساعد الذكي', priority: 'medium',
+        steps: ['انتقل لـ /ai/assistant', 'اكتب سؤال عن المبيعات', 'تحقق من الرد'],
+        expected: 'يرد المساعد بمعلومات مفيدة ودقيقة' },
+      { id: 'AI-002', title: 'توقع المبيعات', priority: 'medium',
+        steps: ['انتقل لـ /ai/sales-forecasting', 'تحقق من التوقعات', 'تحقق من الرسوم البيانية'],
+        expected: 'تظهر توقعات مبيعات منطقية مع رسوم بيانية' },
+      { id: 'AI-003', title: 'التسعير الذكي', priority: 'medium',
+        steps: ['انتقل لـ /ai/smart-pricing', 'تحقق من اقتراحات الاسعار'],
+        expected: 'تظهر اقتراحات تسعير مبنية على البيانات' },
+      { id: 'AI-004', title: 'كشف الاحتيال', priority: 'medium',
+        steps: ['انتقل لـ /ai/fraud-detection', 'تحقق من التنبيهات'],
+        expected: 'تظهر تنبيهات عن معاملات مشبوهة ان وجدت' },
+      { id: 'AI-005', title: 'تحليل السلة', priority: 'low',
+        steps: ['انتقل لـ /ai/basket-analysis', 'تحقق من تحليل المنتجات المرتبطة'],
+        expected: 'تظهر تحليلات عن المنتجات التي تشترى معا' },
+      { id: 'AI-006', title: 'المخزون الذكي', priority: 'medium',
+        steps: ['انتقل لـ /ai/smart-inventory', 'تحقق من توصيات اعادة الطلب'],
+        expected: 'تظهر توصيات ذكية لاعادة طلب المخزون' },
+      { id: 'AI-007', title: 'محادثة مع البيانات', priority: 'low',
+        steps: ['انتقل لـ /ai/chat-with-data', 'اسال سؤال عن البيانات', 'تحقق من الرد'],
+        expected: 'يفهم السؤال ويعرض بيانات صحيحة' },
+      { id: 'AI-008', title: 'التقارير الذكية', priority: 'medium',
+        steps: ['انتقل لـ /ai/smart-reports', 'تحقق من الرؤى المقترحة'],
+        expected: 'تظهر رؤى وتحليلات ذكية مبنية على البيانات' },
+    ]
+  },
+  {
+    id: 'ecommerce',
+    name: 'التجارة الالكترونية',
+    nameEn: 'E-Commerce',
+    icon: '🌐',
+    color: 'lime',
+    tests: [
+      { id: 'ECOM-001', title: 'لوحة التجارة الالكترونية', priority: 'medium',
+        steps: ['انتقل لـ /ecommerce', 'تحقق من عرض لوحة التحكم'],
+        expected: 'تظهر لوحة تحكم التجارة الالكترونية' },
+      { id: 'ECOM-002', title: 'الطلبات الالكترونية', priority: 'high',
+        steps: ['انتقل لـ /ecommerce/online-orders', 'تحقق من عرض الطلبات الواردة'],
+        expected: 'تظهر الطلبات الالكترونية مع حالتها' },
+      { id: 'ECOM-003', title: 'تتبع الطلبات', priority: 'high',
+        steps: ['انتقل لـ /orders/tracking', 'تحقق من حالة الطلبات', 'حدث حالة طلب'],
+        expected: 'يمكن تتبع وتحديث حالة الطلبات' },
+      { id: 'ECOM-004', title: 'مناطق التوصيل', priority: 'medium',
+        steps: ['انتقل لـ /ecommerce/delivery-zones', 'تحقق من المناطق المحددة'],
+        expected: 'تظهر مناطق التوصيل مع الاسعار' },
+    ]
+  },
+  {
+    id: 'sync',
+    name: 'المزامنة والاوفلاين',
+    nameEn: 'Sync & Offline',
+    icon: '🔄',
+    color: 'rose',
+    tests: [
+      { id: 'SYNC-001', title: 'العمل بدون انترنت', priority: 'critical',
+        steps: ['افصل الانترنت', 'اجر عملية بيع في POS', 'تحقق من نجاح العملية', 'اعد الاتصال'],
+        expected: 'يعمل POS بدون انترنت وتحفظ المعاملات محليا' },
+      { id: 'SYNC-002', title: 'المزامنة بعد الاتصال', priority: 'critical',
+        steps: ['بعد العمل اوفلاين، اعد الانترنت', 'تحقق من بدء المزامنة التلقائية', 'تحقق من رفع المعاملات المعلقة'],
+        expected: 'تتم المزامنة تلقائيا ورفع كل البيانات المعلقة' },
+      { id: 'SYNC-003', title: 'صفحة حالة المزامنة', priority: 'high',
+        steps: ['انتقل لـ /sync', 'تحقق من عرض حالة المزامنة', 'تحقق من العناصر المعلقة'],
+        expected: 'تظهر حالة المزامنة بوضوح (متزامن، معلق، خطأ)' },
+      { id: 'SYNC-004', title: 'المعاملات المعلقة', priority: 'high',
+        steps: ['انتقل لـ /sync/pending', 'تحقق من عرض المعاملات غير المزامنة'],
+        expected: 'تظهر قائمة بكل المعاملات التي لم تزامن بعد' },
+      { id: 'SYNC-005', title: 'حل التعارضات', priority: 'medium',
+        steps: ['انتقل لـ /sync/conflicts', 'تحقق ان وجدت تعارضات', 'حل تعارض ان وجد'],
+        expected: 'يتم عرض وحل تعارضات المزامنة' },
+      { id: 'SYNC-006', title: 'استمرارية التطبيق عند انقطاع الشبكة', priority: 'critical',
+        steps: ['اثناء استخدام التطبيق، افصل الانترنت فجأة', 'تحقق من عدم تعطل التطبيق', 'تنقل بين الصفحات'],
+        expected: 'يستمر التطبيق بالعمل بدون تعطل او شاشات خطأ' },
+    ]
+  },
+  {
+    id: 'security',
+    name: 'الامان',
+    nameEn: 'Security',
+    icon: '🛡️',
+    color: 'red',
+    tests: [
+      { id: 'SEC-001', title: 'عدم تسريب بيانات في URL', priority: 'critical',
+        steps: ['سجل الدخول', 'تحقق من URL بعد الدخول', 'ابحث عن كلمات: password, token, secret'],
+        expected: 'URL لا يحتوي على اي بيانات حساسة' },
+      { id: 'SEC-002', title: 'حماية CSP', priority: 'high',
+        steps: ['افتح DevTools > Elements', 'ابحث عن meta tag لـ Content-Security-Policy', 'تحقق من وجودها'],
+        expected: 'توجد سياسة CSP مفعلة' },
+      { id: 'SEC-003', title: 'حماية من Clickjacking', priority: 'high',
+        steps: ['افتح DevTools > Network', 'افحص Response Headers', 'ابحث عن X-Frame-Options'],
+        expected: 'يوجد header لحماية X-Frame-Options بقيمة DENY' },
+      { id: 'SEC-004', title: 'انتهاء الجلسة', priority: 'high',
+        steps: ['سجل الدخول', 'انتظر فترة طويلة بدون نشاط', 'حاول اجراء عملية'],
+        expected: 'يتم تسجيل الخروج تلقائيا عند انتهاء الجلسة' },
+      { id: 'SEC-005', title: 'حماية OTP', priority: 'high',
+        steps: ['ادخل رقم جوال', 'حاول ارسال OTP عدة مرات متتالية بسرعة'],
+        expected: 'يتم تقييد عدد محاولات ارسال OTP (Rate Limiting)' },
+      { id: 'SEC-006', title: 'سجل النشاطات', priority: 'medium',
+        steps: ['انتقل لـ /settings/activity-log', 'تحقق من تسجيل العمليات الحساسة'],
+        expected: 'يظهر سجل كامل للعمليات مع التفاصيل' },
+    ]
+  },
+  {
+    id: 'responsive',
+    name: 'الاستجابة والعرض',
+    nameEn: 'Responsive Design',
+    icon: '📱',
+    color: 'fuchsia',
+    tests: [
+      { id: 'RESP-001', title: 'عرض الجوال (375x812)', priority: 'high',
+        steps: ['افتح DevTools', 'فعل وضع الجوال بابعاد 375x812', 'تنقل بين الصفحات الرئيسية', 'تحقق من العرض'],
+        expected: 'كل الصفحات تعرض بشكل صحيح على شاشة الجوال' },
+      { id: 'RESP-002', title: 'عرض التابلت (768x1024)', priority: 'high',
+        steps: ['افتح DevTools', 'فعل وضع التابلت بابعاد 768x1024', 'تنقل بين الصفحات', 'تحقق من العرض'],
+        expected: 'كل الصفحات تعرض بشكل مناسب للتابلت' },
+      { id: 'RESP-003', title: 'عرض سطح المكتب (1920x1080)', priority: 'high',
+        steps: ['كبر المتصفح لملء الشاشة', 'تنقل بين الصفحات الرئيسية', 'تحقق من استخدام المساحة'],
+        expected: 'التطبيق يستخدم مساحة الشاشة بشكل فعال' },
+      { id: 'RESP-004', title: 'اتجاه RTL (العربية)', priority: 'critical',
+        steps: ['تأكد ان اللغة عربية', 'تحقق من اتجاه النصوص والعناصر', 'تحقق من القوائم والازرار'],
+        expected: 'كل العناصر تعرض من اليمين لليسار بشكل صحيح' },
+    ]
+  },
+  {
+    id: 'performance',
+    name: 'الاداء',
+    nameEn: 'Performance',
+    icon: '⚡',
+    color: 'yellow',
+    tests: [
+      { id: 'PERF-001', title: 'سرعة التنقل بين الصفحات', priority: 'high',
+        steps: ['تنقل بين عدة صفحات بسرعة (POS > Sales > Customers > Settings)', 'كرر 3 مرات', 'تحقق من الاستجابة'],
+        expected: 'التنقل سلس بدون تأخير ملحوظ او تعطل' },
+      { id: 'PERF-002', title: 'اداء POS مع منتجات كثيرة', priority: 'high',
+        steps: ['افتح POS', 'تصفح المنتجات', 'ابحث عن منتج', 'قيس سرعة الاستجابة'],
+        expected: 'POS يستجيب بسرعة حتى مع وجود منتجات كثيرة' },
+      { id: 'PERF-003', title: 'عدم تسريب الذاكرة', priority: 'medium',
+        steps: ['افتح DevTools > Memory', 'استخدم التطبيق لمدة 10 دقائق', 'تنقل بين الصفحات كثيرا', 'راقب استهلاك الذاكرة'],
+        expected: 'استهلاك الذاكرة مستقر ولا يزداد باستمرار' },
+      { id: 'PERF-004', title: 'سرعة البحث', priority: 'high',
+        steps: ['في POS اكتب في البحث', 'في المنتجات اكتب في البحث', 'في العملاء اكتب في البحث', 'قيس سرعة ظهور النتائج'],
+        expected: 'نتائج البحث تظهر فورا (اقل من ثانية)' },
+    ]
+  },
+  {
+    id: 'navigation',
+    name: 'التنقل والصفحات الاخرى',
+    nameEn: 'Navigation & Other Pages',
+    icon: '🧭',
+    color: 'stone',
+    tests: [
+      { id: 'NAV-001', title: 'لوحة التحكم (Dashboard)', priority: 'high',
+        steps: ['انتقل لـ /dashboard', 'تحقق من عرض المؤشرات والاحصائيات', 'تحقق من الرسوم البيانية'],
+        expected: 'تظهر لوحة تحكم مع مؤشرات اداء رئيسية' },
+      { id: 'NAV-002', title: 'الاشعارات', priority: 'medium',
+        steps: ['انتقل لـ /notifications', 'تحقق من عرض الاشعارات', 'اقرأ اشعار'],
+        expected: 'تظهر الاشعارات ويمكن قراءتها والتفاعل معها' },
+      { id: 'NAV-003', title: 'الملف الشخصي', priority: 'medium',
+        steps: ['انتقل لـ /profile', 'تحقق من عرض بيانات المستخدم'],
+        expected: 'تظهر بيانات المستخدم بشكل صحيح' },
+      { id: 'NAV-004', title: 'الفروع', priority: 'medium',
+        steps: ['انتقل لـ /branches', 'تحقق من عرض الفروع'],
+        expected: 'تظهر قائمة الفروع مع تفاصيلها' },
+      { id: 'NAV-005', title: 'الموظفين', priority: 'medium',
+        steps: ['انتقل لـ /employees', 'تحقق من عرض قائمة الموظفين'],
+        expected: 'تظهر قائمة الموظفين مع ادوارهم' },
+      { id: 'NAV-006', title: 'المصروفات', priority: 'high',
+        steps: ['انتقل لـ /expenses', 'تحقق من عرض المصروفات', 'اضف مصروف جديد'],
+        expected: 'يتم عرض وادارة المصروفات بنجاح' },
+      { id: 'NAV-007', title: 'صفحة غير موجودة (404)', priority: 'medium',
+        steps: ['ادخل رابط غير صحيح مثل /xyz-not-found', 'تحقق من سلوك التطبيق'],
+        expected: 'لا يتعطل التطبيق ويعرض صفحة مناسبة' },
+      { id: 'NAV-008', title: 'الاشتراك', priority: 'medium',
+        steps: ['انتقل لـ /subscription', 'تحقق من عرض تفاصيل الاشتراك'],
+        expected: 'تظهر تفاصيل الاشتراك والخطة الحالية' },
+    ]
+  },
+];
+
+// ==========================================
+// APP LOGIC
+// ==========================================
+
+async function init() {
+  try {
+    const { data, error } = await supabase.from('test_runs').select('id').limit(1);
+    if (error) throw error;
+    setConnectionStatus(true);
+    await loadRuns();
+    populateCategoryFilter();
+  } catch (e) {
+    console.error('Connection check failed:', e);
+    document.getElementById('setupModal').classList.remove('hidden');
+    setConnectionStatus(false);
+  }
+}
+
+async function checkConnection() {
+  try {
+    const { data, error } = await supabase.from('test_runs').select('id').limit(1);
+    if (error) throw error;
+    document.getElementById('setupModal').classList.add('hidden');
+    setConnectionStatus(true);
+    await loadRuns();
+    populateCategoryFilter();
+  } catch (e) {
+    const el = document.getElementById('setupError');
+    el.textContent = 'فشل الاتصال: ' + e.message + ' - تأكد من تشغيل SQL اولا';
+    el.classList.remove('hidden');
+  }
+}
+
+function setConnectionStatus(ok) {
+  const el = document.getElementById('connectionStatus');
+  if (ok) {
+    el.innerHTML = '<span class="w-2 h-2 rounded-full bg-green-400"></span><span>متصل</span>';
+  } else {
+    el.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-400"></span><span>غير متصل</span>';
+  }
+}
+
+function populateCategoryFilter() {
+  const sel = document.getElementById('categoryFilter');
+  TEST_CASES.forEach(cat => {
+    const opt = document.createElement('option');
+    opt.value = cat.id;
+    opt.textContent = cat.name;
+    sel.appendChild(opt);
+  });
+}
+
+async function loadRuns() {
+  const { data, error } = await supabase.from('test_runs').select('*').order('created_at', { ascending: false });
+  if (error) return;
+  const sel = document.getElementById('runSelector');
+  sel.innerHTML = '<option value="">-- اختر جلسة اختبار --</option>';
+  (data || []).forEach(run => {
+    const opt = document.createElement('option');
+    opt.value = run.id;
+    opt.textContent = `${run.run_name} - ${run.tester_name} (${new Date(run.created_at).toLocaleDateString('ar-SA')})`;
+    sel.appendChild(opt);
+  });
+}
+
+function showNewRunModal() {
+  document.getElementById('newRunModal').classList.remove('hidden');
+  document.getElementById('newRunName').focus();
+}
+
+async function createNewRun() {
+  const name = document.getElementById('newRunName').value.trim();
+  const tester = document.getElementById('newTesterName').value.trim();
+  const version = document.getElementById('newAppVersion').value.trim();
+  const env = document.getElementById('newEnvironment').value;
+  if (!name || !tester) { alert('يرجى ملء الاسم واسم المختبر'); return; }
+
+  const totalTests = TEST_CASES.reduce((sum, cat) => sum + cat.tests.length, 0);
+
+  const { data, error } = await supabase.from('test_runs').insert({
+    run_name: name, tester_name: tester, app_version: version,
+    environment: env, total_tests: totalTests
+  }).select().single();
+
+  if (error) { alert('خطأ: ' + error.message); return; }
+
+  // Create test result records
+  const results = [];
+  TEST_CASES.forEach(cat => {
+    cat.tests.forEach(test => {
+      results.push({
+        run_id: data.id, test_id: test.id, category: cat.id,
+        test_title: test.title, status: 'pending', tester_name: tester
+      });
+    });
+  });
+
+  const { error: insertError } = await supabase.from('test_results').insert(results);
+  if (insertError) { alert('خطأ في انشاء الاختبارات: ' + insertError.message); return; }
+
+  document.getElementById('newRunModal').classList.add('hidden');
+  await loadRuns();
+  document.getElementById('runSelector').value = data.id;
+  await loadRun(data.id);
+}
+
+async function loadRun(runId) {
+  if (!runId) {
+    currentRunId = null;
+    document.getElementById('welcomeScreen').classList.remove('hidden');
+    document.getElementById('categoriesView').classList.add('hidden');
+    document.getElementById('listView').classList.add('hidden');
+    document.getElementById('statsBar').classList.add('hidden');
+    document.getElementById('filterBar').style.display = 'none';
+    return;
+  }
+
+  currentRunId = runId;
+  const { data: run } = await supabase.from('test_runs').select('*').eq('id', runId).single();
+  currentRunData = run;
+
+  const { data: results } = await supabase.from('test_results').select('*').eq('run_id', runId);
+  testResults = {};
+  (results || []).forEach(r => { testResults[r.test_id] = r; });
+
+  document.getElementById('welcomeScreen').classList.add('hidden');
+  document.getElementById('statsBar').classList.remove('hidden');
+  document.getElementById('filterBar').style.display = '';
+  document.getElementById('statTester').textContent = run.tester_name;
+  document.getElementById('statRun').textContent = run.run_name;
+
+  updateStats();
+  toggleView('categories');
+}
+
+function updateStats() {
+  const all = Object.values(testResults);
+  const total = all.length;
+  const pass = all.filter(r => r.status === 'pass').length;
+  const fail = all.filter(r => r.status === 'fail').length;
+  const skip = all.filter(r => r.status === 'skip').length;
+  const blocked = all.filter(r => r.status === 'blocked').length;
+  const pending = all.filter(r => r.status === 'pending').length;
+  const done = pass + fail + skip + blocked;
+  const pct = total > 0 ? Math.round(done / total * 100) : 0;
+
+  document.getElementById('statTotal').textContent = total;
+  document.getElementById('statPass').textContent = pass;
+  document.getElementById('statFail').textContent = fail;
+  document.getElementById('statSkip').textContent = skip;
+  document.getElementById('statBlocked').textContent = blocked;
+  document.getElementById('statPending').textContent = pending;
+  document.getElementById('progressBar').style.width = pct + '%';
+  document.getElementById('progressPct').textContent = pct + '%';
+}
+
+function toggleView(view) {
+  currentView = view;
+  if (view === 'categories') {
+    document.getElementById('categoriesView').classList.remove('hidden');
+    document.getElementById('listView').classList.add('hidden');
+    renderCategories();
+  } else {
+    document.getElementById('categoriesView').classList.add('hidden');
+    document.getElementById('listView').classList.remove('hidden');
+  }
+}
+
+function renderCategories() {
+  const grid = document.getElementById('categoriesGrid');
+  const searchVal = document.getElementById('searchInput').value.toLowerCase();
+  const statusVal = document.getElementById('statusFilter').value;
+  const priorityVal = document.getElementById('priorityFilter').value;
+  const catVal = document.getElementById('categoryFilter').value;
+
+  grid.innerHTML = '';
+  TEST_CASES.forEach(cat => {
+    if (catVal !== 'all' && cat.id !== catVal) return;
+
+    const catResults = cat.tests.map(t => testResults[t.id]).filter(Boolean);
+    const total = cat.tests.length;
+    const pass = catResults.filter(r => r.status === 'pass').length;
+    const fail = catResults.filter(r => r.status === 'fail').length;
+    const done = catResults.filter(r => r.status !== 'pending').length;
+    const pct = total > 0 ? Math.round(done / total * 100) : 0;
+
+    const colors = {
+      blue: 'from-blue-500 to-blue-600', purple: 'from-purple-500 to-purple-600',
+      green: 'from-green-500 to-green-600', emerald: 'from-emerald-500 to-emerald-600',
+      orange: 'from-orange-500 to-orange-600', red: 'from-red-500 to-red-600',
+      cyan: 'from-cyan-500 to-cyan-600', amber: 'from-amber-500 to-amber-600',
+      teal: 'from-teal-500 to-teal-600', violet: 'from-violet-500 to-violet-600',
+      slate: 'from-slate-500 to-slate-600', pink: 'from-pink-500 to-pink-600',
+      sky: 'from-sky-500 to-sky-600', gray: 'from-gray-500 to-gray-600',
+      indigo: 'from-indigo-500 to-indigo-600', lime: 'from-lime-500 to-lime-600',
+      rose: 'from-rose-500 to-rose-600', fuchsia: 'from-fuchsia-500 to-fuchsia-600',
+      yellow: 'from-yellow-500 to-yellow-600', stone: 'from-stone-500 to-stone-600'
+    };
+
+    const card = document.createElement('div');
+    card.className = 'category-card bg-white rounded-2xl shadow-sm border hover:shadow-lg transition-all cursor-pointer overflow-hidden';
+    card.onclick = () => openCategory(cat.id);
+    card.innerHTML = `
+      <div class="bg-gradient-to-l ${colors[cat.color] || 'from-gray-500 to-gray-600'} p-4 text-white">
+        <div class="flex items-center justify-between">
+          <div>
+            <span class="text-2xl ml-2">${cat.icon}</span>
+            <span class="font-bold text-lg">${cat.name}</span>
+          </div>
+          <span class="text-white/70 text-sm">${cat.nameEn}</span>
+        </div>
+      </div>
+      <div class="p-4">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-sm text-gray-500">${total} اختبار</span>
+          <span class="text-sm font-bold ${pct === 100 ? 'text-green-600' : 'text-gray-600'}">${pct}%</span>
+        </div>
+        <div class="bg-gray-200 rounded-full h-2 mb-3 overflow-hidden">
+          <div class="h-full rounded-full ${pct === 100 ? 'bg-green-500' : 'bg-blue-500'} progress-bar" style="width:${pct}%"></div>
+        </div>
+        <div class="flex items-center gap-3 text-xs">
+          <span class="text-green-600 font-bold">${pass} نجح</span>
+          <span class="text-red-600 font-bold">${fail} فشل</span>
+          <span class="text-gray-400">${total - done} معلق</span>
+        </div>
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+function openCategory(catId) {
+  currentCategory = catId;
+  const cat = TEST_CASES.find(c => c.id === catId);
+  if (!cat) return;
+
+  document.getElementById('listTitle').textContent = cat.icon + ' ' + cat.name;
+  toggleView('list');
+  renderTestList(cat);
+}
+
+function renderTestList(cat) {
+  const container = document.getElementById('testsList');
+  const searchVal = document.getElementById('searchInput').value.toLowerCase();
+  const statusVal = document.getElementById('statusFilter').value;
+  const priorityVal = document.getElementById('priorityFilter').value;
+
+  container.innerHTML = '';
+
+  let filteredTests = cat.tests;
+  if (searchVal) filteredTests = filteredTests.filter(t => t.title.includes(searchVal) || t.id.toLowerCase().includes(searchVal));
+  if (statusVal !== 'all') filteredTests = filteredTests.filter(t => (testResults[t.id]?.status || 'pending') === statusVal);
+  if (priorityVal !== 'all') filteredTests = filteredTests.filter(t => t.priority === priorityVal);
+
+  const done = filteredTests.filter(t => testResults[t.id]?.status && testResults[t.id].status !== 'pending').length;
+  document.getElementById('listProgress').textContent = `${done}/${filteredTests.length} مكتمل`;
+
+  filteredTests.forEach(test => {
+    const result = testResults[test.id] || { status: 'pending' };
+    const card = document.createElement('div');
+    card.className = 'test-card bg-white rounded-xl border shadow-sm fade-in';
+    card.id = 'test-' + test.id;
+
+    const priorityLabels = { critical: 'حرج', high: 'عالي', medium: 'متوسط', low: 'منخفض' };
+    const statusLabels = { pending: 'معلق', pass: 'نجح', fail: 'فشل', skip: 'تخطي', blocked: 'محظور' };
+
+    card.innerHTML = `
+      <div class="p-5">
+        <div class="flex items-start justify-between mb-3 flex-wrap gap-2">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="font-mono text-xs bg-gray-100 text-gray-500 px-2 py-1 rounded">${test.id}</span>
+            <span class="priority-${test.priority} text-xs px-2 py-1 rounded-full font-bold">${priorityLabels[test.priority]}</span>
+            <h3 class="font-bold text-gray-800 text-lg">${test.title}</h3>
+          </div>
+          <div class="status-${result.status} px-3 py-1 rounded-full text-sm font-bold border">
+            ${statusLabels[result.status]}
+          </div>
+        </div>
+
+        <details class="mb-4">
+          <summary class="cursor-pointer text-sm text-blue-600 hover:text-blue-800 font-bold">خطوات الاختبار والنتيجة المتوقعة</summary>
+          <div class="mt-3 bg-gray-50 rounded-lg p-4">
+            <p class="font-bold text-sm text-gray-700 mb-2">الخطوات:</p>
+            <ol class="list-decimal list-inside space-y-1 text-sm text-gray-600 mb-3 mr-2">
+              ${test.steps.map(s => `<li>${s}</li>`).join('')}
+            </ol>
+            <p class="font-bold text-sm text-gray-700 mb-1">النتيجة المتوقعة:</p>
+            <p class="text-sm text-green-700 bg-green-50 rounded px-3 py-2">${test.expected}</p>
+          </div>
+        </details>
+
+        <div class="flex items-center gap-2 flex-wrap mb-3">
+          <span class="text-sm text-gray-500 ml-2">النتيجة:</span>
+          ${['pass','fail','skip','blocked'].map(s => `
+            <button onclick="setStatus('${test.id}','${s}')"
+              class="px-4 py-1.5 rounded-lg text-sm font-bold border transition
+              ${result.status === s ? `status-${s} ring-2 ring-offset-1` : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}">
+              ${statusLabels[s]}
+            </button>
+          `).join('')}
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label class="text-xs font-bold text-gray-500 block mb-1">ملاحظات</label>
+            <textarea id="notes-${test.id}" rows="2" placeholder="اكتب ملاحظاتك هنا..."
+              class="w-full border rounded-lg px-3 py-2 text-sm resize-none"
+              onblur="saveNotes('${test.id}')">${result.notes || ''}</textarea>
+          </div>
+          <div>
+            <label class="text-xs font-bold text-gray-500 block mb-1">لقطة شاشة</label>
+            <div class="flex items-center gap-2">
+              <label class="flex-1 border-2 border-dashed rounded-lg p-3 text-center cursor-pointer hover:bg-gray-50 transition text-sm text-gray-400">
+                <input type="file" accept="image/*" class="hidden" onchange="uploadScreenshot('${test.id}', this)">
+                📷 اختر صورة او اسحبها هنا
+              </label>
+            </div>
+            ${result.screenshot_url ? `
+              <div class="mt-2">
+                <img src="${result.screenshot_url}" class="screenshot-preview rounded-lg border"
+                  onclick="showImageModal('${result.screenshot_url}')">
+              </div>
+            ` : ''}
+          </div>
+        </div>
+
+        ${result.status === 'fail' ? `
+          <div class="mt-3 border-t pt-3">
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-xs font-bold text-gray-500 block mb-1">رقم البق (Bug ID)</label>
+                <input type="text" id="bug-${test.id}" value="${result.bug_id || ''}" placeholder="مثال: BUG-123"
+                  class="w-full border rounded-lg px-3 py-2 text-sm" onblur="saveBugId('${test.id}')">
+              </div>
+              <div>
+                <label class="text-xs font-bold text-gray-500 block mb-1">الخطورة</label>
+                <select id="severity-${test.id}" class="w-full border rounded-lg px-3 py-2 text-sm" onchange="saveSeverity('${test.id}')">
+                  <option value="">-- اختر --</option>
+                  <option value="critical" ${result.severity === 'critical' ? 'selected' : ''}>حرج (Critical)</option>
+                  <option value="major" ${result.severity === 'major' ? 'selected' : ''}>كبير (Major)</option>
+                  <option value="minor" ${result.severity === 'minor' ? 'selected' : ''}>صغير (Minor)</option>
+                  <option value="cosmetic" ${result.severity === 'cosmetic' ? 'selected' : ''}>شكلي (Cosmetic)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        ` : ''}
+
+        ${result.tested_at ? `
+          <div class="mt-2 text-xs text-gray-400">
+            اخر تحديث: ${new Date(result.tested_at).toLocaleString('ar-SA')}
+          </div>
+        ` : ''}
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+async function setStatus(testId, status) {
+  if (!currentRunId) return;
+  const result = testResults[testId];
+  if (!result) return;
+
+  // Toggle: if same status, set back to pending
+  const newStatus = result.status === status ? 'pending' : status;
+
+  const { error } = await supabase.from('test_results')
+    .update({ status: newStatus, tested_at: new Date().toISOString() })
+    .eq('run_id', currentRunId).eq('test_id', testId);
+
+  if (error) { alert('خطأ: ' + error.message); return; }
+
+  testResults[testId].status = newStatus;
+  testResults[testId].tested_at = new Date().toISOString();
+  updateStats();
+
+  // Re-render the test card
+  const cat = TEST_CASES.find(c => c.tests.some(t => t.id === testId));
+  if (cat && currentView === 'list') renderTestList(cat);
+  if (currentView === 'categories') renderCategories();
+}
+
+async function saveNotes(testId) {
+  if (!currentRunId) return;
+  const notes = document.getElementById('notes-' + testId)?.value || '';
+  await supabase.from('test_results')
+    .update({ notes, updated_at: new Date().toISOString() })
+    .eq('run_id', currentRunId).eq('test_id', testId);
+  if (testResults[testId]) testResults[testId].notes = notes;
+}
+
+async function saveBugId(testId) {
+  if (!currentRunId) return;
+  const bugId = document.getElementById('bug-' + testId)?.value || '';
+  await supabase.from('test_results')
+    .update({ bug_id: bugId }).eq('run_id', currentRunId).eq('test_id', testId);
+  if (testResults[testId]) testResults[testId].bug_id = bugId;
+}
+
+async function saveSeverity(testId) {
+  if (!currentRunId) return;
+  const severity = document.getElementById('severity-' + testId)?.value || null;
+  await supabase.from('test_results')
+    .update({ severity }).eq('run_id', currentRunId).eq('test_id', testId);
+  if (testResults[testId]) testResults[testId].severity = severity;
+}
+
+async function uploadScreenshot(testId, input) {
+  if (!input.files.length) return;
+  const file = input.files[0];
+  const ext = file.name.split('.').pop();
+  const path = `${currentRunId}/${testId}_${Date.now()}.${ext}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('test-screenshots').upload(path, file, { contentType: file.type, upsert: true });
+
+  if (uploadError) { alert('خطأ في رفع الصورة: ' + uploadError.message); return; }
+
+  const { data: { publicUrl } } = supabase.storage.from('test-screenshots').getPublicUrl(path);
+
+  await supabase.from('test_results')
+    .update({ screenshot_url: publicUrl }).eq('run_id', currentRunId).eq('test_id', testId);
+
+  if (testResults[testId]) testResults[testId].screenshot_url = publicUrl;
+
+  // Re-render
+  const cat = TEST_CASES.find(c => c.tests.some(t => t.id === testId));
+  if (cat) renderTestList(cat);
+}
+
+function showImageModal(url) {
+  document.getElementById('imageModalSrc').src = url;
+  document.getElementById('imageModal').classList.remove('hidden');
+  document.getElementById('imageModal').style.display = 'flex';
+}
+
+function applyFilters() {
+  if (currentView === 'categories') {
+    renderCategories();
+  } else if (currentCategory) {
+    const cat = TEST_CASES.find(c => c.id === currentCategory);
+    if (cat) renderTestList(cat);
+  }
+}
+
+async function exportReport() {
+  if (!currentRunId || !currentRunData) { alert('اختر جلسة اختبار اولا'); return; }
+
+  const all = Object.values(testResults);
+  const total = all.length;
+  const pass = all.filter(r => r.status === 'pass').length;
+  const fail = all.filter(r => r.status === 'fail').length;
+  const skip = all.filter(r => r.status === 'skip').length;
+  const blocked = all.filter(r => r.status === 'blocked').length;
+  const pending = all.filter(r => r.status === 'pending').length;
+  const pct = total > 0 ? Math.round((pass + fail + skip + blocked) / total * 100) : 0;
+
+  let html = `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8">
+    <title>تقرير الاختبار - ${currentRunData.run_name}</title>
+    <style>
+      * { font-family: 'Tajawal', Arial, sans-serif; }
+      body { max-width: 900px; margin: 0 auto; padding: 20px; color: #333; }
+      h1 { color: #1e40af; border-bottom: 3px solid #1e40af; padding-bottom: 10px; }
+      h2 { color: #374151; margin-top: 30px; }
+      .summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin: 20px 0; }
+      .stat { background: #f3f4f6; padding: 15px; border-radius: 12px; text-align: center; }
+      .stat .num { font-size: 28px; font-weight: 800; }
+      .pass { color: #16a34a; } .fail { color: #dc2626; } .skip { color: #ca8a04; }
+      table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+      th, td { border: 1px solid #e5e7eb; padding: 8px 12px; text-align: right; font-size: 14px; }
+      th { background: #f9fafb; font-weight: 700; }
+      .s-pass { background: #dcfce7; } .s-fail { background: #fee2e2; }
+      .s-skip { background: #fef9c3; } .s-blocked { background: #e0e7ff; }
+      .screenshot { max-width: 200px; max-height: 120px; border-radius: 8px; }
+      @media print { body { margin: 0; } }
+    </style></head><body>
+    <h1>تقرير اختبار الحاي POS</h1>
+    <p><strong>الجلسة:</strong> ${currentRunData.run_name} | <strong>المختبر:</strong> ${currentRunData.tester_name}</p>
+    <p><strong>الاصدار:</strong> ${currentRunData.app_version} | <strong>البيئة:</strong> ${currentRunData.environment}</p>
+    <p><strong>التاريخ:</strong> ${new Date().toLocaleString('ar-SA')}</p>
+
+    <div class="summary">
+      <div class="stat"><div class="num">${total}</div>اجمالي</div>
+      <div class="stat"><div class="num pass">${pass}</div>نجح</div>
+      <div class="stat"><div class="num fail">${fail}</div>فشل</div>
+      <div class="stat"><div class="num skip">${skip}</div>تخطي</div>
+      <div class="stat"><div class="num">${blocked}</div>محظور</div>
+      <div class="stat"><div class="num">${pct}%</div>مكتمل</div>
+    </div>`;
+
+  TEST_CASES.forEach(cat => {
+    const catTests = cat.tests.map(t => ({ ...t, result: testResults[t.id] || { status: 'pending' } }));
+    const catPass = catTests.filter(t => t.result.status === 'pass').length;
+    const catFail = catTests.filter(t => t.result.status === 'fail').length;
+
+    html += `<h2>${cat.icon} ${cat.name} (${catPass}/${cat.tests.length} نجح${catFail > 0 ? ` | ${catFail} فشل` : ''})</h2>
+    <table><thead><tr><th>الرقم</th><th>الاختبار</th><th>الاولوية</th><th>النتيجة</th><th>ملاحظات</th><th>لقطة</th></tr></thead><tbody>`;
+
+    catTests.forEach(t => {
+      const sClass = `s-${t.result.status}`;
+      const statusLabels = { pending: 'معلق', pass: 'نجح', fail: 'فشل', skip: 'تخطي', blocked: 'محظور' };
+      const prioLabels = { critical: 'حرج', high: 'عالي', medium: 'متوسط', low: 'منخفض' };
+      html += `<tr class="${sClass}">
+        <td>${t.id}</td><td>${t.title}</td><td>${prioLabels[t.priority]}</td>
+        <td><strong>${statusLabels[t.result.status]}</strong></td>
+        <td>${t.result.notes || '-'}</td>
+        <td>${t.result.screenshot_url ? `<img src="${t.result.screenshot_url}" class="screenshot">` : '-'}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+  });
+
+  // Failed tests summary
+  const failedTests = all.filter(r => r.status === 'fail');
+  if (failedTests.length > 0) {
+    html += `<h2 style="color:#dc2626">ملخص الاختبارات الفاشلة (${failedTests.length})</h2>
+    <table><thead><tr><th>الرقم</th><th>الاختبار</th><th>الخطورة</th><th>Bug ID</th><th>ملاحظات</th></tr></thead><tbody>`;
+    failedTests.forEach(r => {
+      const sevLabels = { critical: 'حرج', major: 'كبير', minor: 'صغير', cosmetic: 'شكلي' };
+      html += `<tr class="s-fail"><td>${r.test_id}</td><td>${r.test_title}</td>
+        <td>${sevLabels[r.severity] || '-'}</td><td>${r.bug_id || '-'}</td><td>${r.notes || '-'}</td></tr>`;
+    });
+    html += '</tbody></table>';
+  }
+
+  html += `<hr><p style="text-align:center;color:#9ca3af;font-size:12px">تم انشاء هذا التقرير بواسطة منصة اختبارات الحاي POS - ${new Date().toLocaleString('ar-SA')}</p></body></html>`;
+
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `test-report-${currentRunData.run_name}-${new Date().toISOString().slice(0,10)}.html`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Init
+init();
+</script>
+
+</body>
+</html>
