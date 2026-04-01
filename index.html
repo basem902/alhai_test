@@ -303,11 +303,8 @@ const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzd
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
 // ==========================================
-// WASENDER CONFIG
+// AUTH CONFIG
 // ==========================================
-const WASENDER_API = 'https://api.wasender.net/v1/messages/send-text';
-const WASENDER_SESSION_ID = '73797';
-const WASENDER_API_KEY = 'f56d0680ee5f69b96073c7714284a741d5b9c45d94bee3a5c4dd0cf8e54f9b7c';
 const ADMIN_PHONE = '966544711074';
 const SITE_URL = 'https://basem902.github.io/alhai_test';
 
@@ -348,20 +345,12 @@ function generateOTP() {
 
 async function sendWhatsApp(phone, message) {
   try {
-    const resp = await fetch(WASENDER_API, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + WASENDER_API_KEY,
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({
-        sessionId: WASENDER_SESSION_ID,
-        to: phone + '@s.whatsapp.net',
-        text: message
-      })
+    const { data, error } = await sb.rpc('send_whatsapp', {
+      p_phone: phone,
+      p_message: message
     });
-    return resp.ok;
+    if (error) { console.error('WhatsApp RPC error:', error); return false; }
+    return data?.success !== false;
   } catch (e) {
     console.error('WhatsApp send error:', e);
     return false;

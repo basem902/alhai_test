@@ -107,9 +107,7 @@ const SUPABASE_URL = 'https://gdqkiyjxhtxbajwffvbd.supabase.co';
 const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdkcWtpeWp4aHR4YmFqd2ZmdmJkIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTAzNzg1NiwiZXhwIjoyMDkwNjEzODU2fQ.l1HnNM6FbTTZBeHMAj7IPH8xEZXEhVILH8tWs18n5qc';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-const WASENDER_API = 'https://api.wasender.net/v1/messages/send-text';
-const WASENDER_SESSION_ID = '73797';
-const WASENDER_API_KEY = 'f56d0680ee5f69b96073c7714284a741d5b9c45d94bee3a5c4dd0cf8e54f9b7c';
+// WhatsApp via Supabase RPC (send_whatsapp function)
 
 // Check URL params for quick action
 const params = new URLSearchParams(window.location.search);
@@ -174,15 +172,7 @@ async function processQuickAction(action, id, token) {
 
 async function sendWhatsApp(phone, message) {
   try {
-    await fetch(WASENDER_API, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + WASENDER_API_KEY,
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({ sessionId: WASENDER_SESSION_ID, to: phone + '@s.whatsapp.net', text: message })
-    });
+    await sb.rpc('send_whatsapp', { p_phone: phone, p_message: message });
   } catch (e) { console.error(e); }
 }
 
