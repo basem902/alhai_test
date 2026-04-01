@@ -37,6 +37,88 @@
 </head>
 <body class="bg-gray-50 min-h-screen">
 
+<!-- ==========================================
+     AUTH SCREEN - OTP + Admin Approval
+     ========================================== -->
+<div id="authScreen" class="fixed inset-0 bg-gradient-to-bl from-blue-700 via-blue-600 to-indigo-800 z-[100] flex items-center justify-center">
+  <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
+    <!-- Header -->
+    <div class="bg-gradient-to-l from-blue-600 to-indigo-700 p-6 text-white text-center">
+      <div class="text-4xl mb-2">🔐</div>
+      <h1 class="text-xl font-extrabold">منصة اختبارات الحاي POS</h1>
+      <p class="text-blue-200 text-sm mt-1">تسجيل الدخول مطلوب</p>
+    </div>
+
+    <!-- Step 1: Phone Input -->
+    <div id="authStep1" class="p-6">
+      <label class="block text-sm font-bold text-gray-600 mb-2">رقم الجوال</label>
+      <div class="flex gap-2" dir="ltr">
+        <span class="bg-gray-100 border rounded-xl px-3 py-3 text-gray-500 font-bold text-sm">+966</span>
+        <input type="tel" id="authPhone" placeholder="5xxxxxxxx" maxlength="10"
+          class="flex-1 border-2 rounded-xl px-4 py-3 text-lg text-center font-bold tracking-wider focus:border-blue-500 focus:outline-none"
+          oninput="this.value=this.value.replace(/[^0-9]/g,'')">
+      </div>
+      <div class="mt-4">
+        <label class="block text-sm font-bold text-gray-600 mb-2">اسمك</label>
+        <input type="text" id="authName" placeholder="الاسم الكامل"
+          class="w-full border-2 rounded-xl px-4 py-3 focus:border-blue-500 focus:outline-none">
+      </div>
+      <button onclick="sendOTP()" id="btnSendOTP"
+        class="w-full mt-5 bg-blue-600 text-white py-3.5 rounded-xl font-bold text-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
+        ارسال رمز التحقق
+      </button>
+      <p id="authError1" class="text-red-500 text-sm mt-2 hidden text-center"></p>
+    </div>
+
+    <!-- Step 2: OTP Input -->
+    <div id="authStep2" class="p-6 hidden">
+      <div class="text-center mb-4">
+        <div class="text-3xl mb-2">💬</div>
+        <p class="text-gray-600">تم ارسال رمز التحقق عبر واتساب الى</p>
+        <p id="authPhoneDisplay" class="font-bold text-blue-600 mt-1" dir="ltr"></p>
+      </div>
+      <label class="block text-sm font-bold text-gray-600 mb-2 text-center">رمز التحقق (6 ارقام)</label>
+      <input type="tel" id="authOTP" placeholder="000000" maxlength="6"
+        class="w-full border-2 rounded-xl px-4 py-4 text-2xl text-center font-bold tracking-[0.5em] focus:border-blue-500 focus:outline-none"
+        dir="ltr" oninput="this.value=this.value.replace(/[^0-9]/g,''); if(this.value.length===6) verifyOTP();">
+      <button onclick="verifyOTP()" id="btnVerifyOTP"
+        class="w-full mt-4 bg-blue-600 text-white py-3.5 rounded-xl font-bold text-lg hover:bg-blue-700 transition disabled:opacity-50">
+        تحقق
+      </button>
+      <button onclick="showStep(1)" class="w-full mt-2 text-blue-600 text-sm font-bold hover:text-blue-800">
+        ← تغيير الرقم
+      </button>
+      <p id="authError2" class="text-red-500 text-sm mt-2 hidden text-center"></p>
+    </div>
+
+    <!-- Step 3: Waiting for Approval -->
+    <div id="authStep3" class="p-6 hidden">
+      <div class="text-center">
+        <div class="text-5xl mb-4 animate-bounce">⏳</div>
+        <h3 class="text-xl font-bold text-gray-800 mb-2">بانتظار موافقة المدير</h3>
+        <p class="text-gray-500 text-sm mb-4">تم ارسال طلب الدخول للمدير عبر واتساب.<br>سيتم الدخول تلقائيا عند الموافقة.</p>
+        <div class="flex items-center justify-center gap-2 text-sm text-gray-400">
+          <div class="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
+          <span id="waitingTimer">جاري الانتظار...</span>
+        </div>
+        <div id="approvalResult" class="mt-4 hidden"></div>
+      </div>
+    </div>
+
+    <!-- Step 4: Rejected -->
+    <div id="authStep4" class="p-6 hidden">
+      <div class="text-center">
+        <div class="text-5xl mb-4">🚫</div>
+        <h3 class="text-xl font-bold text-red-600 mb-2">تم رفض الطلب</h3>
+        <p class="text-gray-500 text-sm mb-4">المدير رفض طلب الدخول. تواصل مع المدير للحصول على صلاحية.</p>
+        <button onclick="showStep(1)" class="bg-gray-100 text-gray-700 px-6 py-3 rounded-xl font-bold hover:bg-gray-200 transition">
+          حاول مرة اخرى
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Setup Modal -->
 <div id="setupModal" class="fixed inset-0 modal-overlay z-50 flex items-center justify-center hidden">
   <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 p-8">
@@ -220,11 +302,318 @@ const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzd
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
+// ==========================================
+// WASENDER CONFIG
+// ==========================================
+const WASENDER_API = 'https://api.wasender.net/v1/messages/send-text';
+const WASENDER_SESSION_ID = '73797';
+const WASENDER_API_KEY = 'f56d0680ee5f69b96073c7714284a741d5b9c45d94bee3a5c4dd0cf8e54f9b7c';
+const ADMIN_PHONE = '966544711074';
+const SITE_URL = 'https://basem902.github.io/alhai_test';
+
 let currentRunId = null;
 let currentRunData = null;
 let testResults = {};
 let currentCategory = null;
 let currentView = 'categories';
+let authRequestId = null;
+let approvalCheckInterval = null;
+
+// ==========================================
+// AUTH FUNCTIONS
+// ==========================================
+
+function showStep(step) {
+  ['authStep1','authStep2','authStep3','authStep4'].forEach((id, i) => {
+    document.getElementById(id).classList.toggle('hidden', i !== step - 1);
+  });
+  if (step === 1) {
+    document.getElementById('authError1').classList.add('hidden');
+    document.getElementById('authError2').classList.add('hidden');
+  }
+}
+
+function formatPhone(phone) {
+  phone = phone.replace(/[^0-9]/g, '');
+  if (phone.startsWith('00966')) phone = phone.slice(2);
+  else if (phone.startsWith('+966')) phone = phone.slice(1);
+  else if (phone.startsWith('05')) phone = '966' + phone.slice(1);
+  else if (phone.startsWith('5')) phone = '966' + phone;
+  return phone;
+}
+
+function generateOTP() {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+async function sendWhatsApp(phone, message) {
+  try {
+    const resp = await fetch(WASENDER_API, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + WASENDER_API_KEY,
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        sessionId: WASENDER_SESSION_ID,
+        to: phone + '@s.whatsapp.net',
+        text: message
+      })
+    });
+    return resp.ok;
+  } catch (e) {
+    console.error('WhatsApp send error:', e);
+    return false;
+  }
+}
+
+async function sendOTP() {
+  const phoneInput = document.getElementById('authPhone').value.trim();
+  const name = document.getElementById('authName').value.trim();
+  const errEl = document.getElementById('authError1');
+  const btn = document.getElementById('btnSendOTP');
+
+  if (!phoneInput || phoneInput.length < 9) {
+    errEl.textContent = 'ادخل رقم جوال صحيح';
+    errEl.classList.remove('hidden');
+    return;
+  }
+  if (!name) {
+    errEl.textContent = 'ادخل اسمك';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'جاري الارسال...';
+  errEl.classList.add('hidden');
+
+  const phone = formatPhone(phoneInput);
+  const otp = generateOTP();
+
+  // Check if admin (bypass OTP)
+  const { data: adminCheck } = await sb.from('approved_users')
+    .select('*').eq('phone', phone).eq('is_admin', true).single();
+
+  if (adminCheck) {
+    // Admin auto-login
+    const token = crypto.randomUUID();
+    await sb.from('access_requests').insert({
+      phone, name, otp_code: otp, otp_verified: true,
+      status: 'approved', session_token: token
+    });
+    localStorage.setItem('test_session', token);
+    localStorage.setItem('test_phone', phone);
+    localStorage.setItem('test_name', name);
+    localStorage.setItem('test_is_admin', 'true');
+    document.getElementById('authScreen').classList.add('hidden');
+    btn.disabled = false;
+    btn.textContent = 'ارسال رمز التحقق';
+    init();
+    return;
+  }
+
+  // Check if previously approved user
+  const { data: approvedUser } = await sb.from('approved_users')
+    .select('*').eq('phone', phone).eq('is_active', true).single();
+
+  // Send OTP via WhatsApp
+  const msg = `🔐 *منصة اختبارات الحاي POS*\n\nرمز التحقق الخاص بك:\n\n*${otp}*\n\nالرمز صالح لمدة 10 دقائق.\nلا تشاركه مع احد.`;
+  const sent = await sendWhatsApp(phone, msg);
+
+  if (!sent) {
+    errEl.textContent = 'فشل ارسال الرمز. تحقق من الرقم وحاول مرة اخرى.';
+    errEl.classList.remove('hidden');
+    btn.disabled = false;
+    btn.textContent = 'ارسال رمز التحقق';
+    return;
+  }
+
+  // Save to database
+  const { data: req, error } = await sb.from('access_requests').insert({
+    phone, name, otp_code: otp, status: approvedUser ? 'approved' : 'pending'
+  }).select().single();
+
+  if (error) {
+    errEl.textContent = 'خطأ: ' + error.message;
+    errEl.classList.remove('hidden');
+    btn.disabled = false;
+    btn.textContent = 'ارسال رمز التحقق';
+    return;
+  }
+
+  authRequestId = req.id;
+  document.getElementById('authPhoneDisplay').textContent = '+' + phone;
+  showStep(2);
+  btn.disabled = false;
+  btn.textContent = 'ارسال رمز التحقق';
+}
+
+async function verifyOTP() {
+  const otp = document.getElementById('authOTP').value.trim();
+  const errEl = document.getElementById('authError2');
+  const btn = document.getElementById('btnVerifyOTP');
+
+  if (otp.length !== 6) {
+    errEl.textContent = 'ادخل الرمز المكون من 6 ارقام';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'جاري التحقق...';
+  errEl.classList.add('hidden');
+
+  // Verify OTP
+  const { data: req, error } = await sb.from('access_requests')
+    .select('*').eq('id', authRequestId).single();
+
+  if (error || !req) {
+    errEl.textContent = 'خطأ في التحقق. حاول مرة اخرى.';
+    errEl.classList.remove('hidden');
+    btn.disabled = false;
+    btn.textContent = 'تحقق';
+    return;
+  }
+
+  if (req.otp_code !== otp) {
+    errEl.textContent = 'رمز التحقق غير صحيح';
+    errEl.classList.remove('hidden');
+    btn.disabled = false;
+    btn.textContent = 'تحقق';
+    return;
+  }
+
+  // OTP correct - mark verified
+  const token = crypto.randomUUID();
+  await sb.from('access_requests').update({
+    otp_verified: true, session_token: token
+  }).eq('id', authRequestId);
+
+  // Check if already approved user
+  if (req.status === 'approved') {
+    // Already approved - let them in
+    localStorage.setItem('test_session', token);
+    localStorage.setItem('test_phone', req.phone);
+    localStorage.setItem('test_name', req.name);
+    await sb.from('approved_users').upsert({
+      phone: req.phone, name: req.name, last_login: new Date().toISOString()
+    }, { onConflict: 'phone' });
+    document.getElementById('authScreen').classList.add('hidden');
+    btn.disabled = false;
+    btn.textContent = 'تحقق';
+    init();
+    return;
+  }
+
+  // Need admin approval - send WhatsApp to admin
+  const approveUrl = `${SITE_URL}/admin.html?action=approve&id=${authRequestId}&token=${token}`;
+  const rejectUrl = `${SITE_URL}/admin.html?action=reject&id=${authRequestId}&token=${token}`;
+
+  const adminMsg = `🔔 *طلب دخول جديد*\n\n` +
+    `👤 الاسم: *${req.name}*\n` +
+    `📱 الرقم: ${req.phone}\n` +
+    `🕐 الوقت: ${new Date().toLocaleString('ar-SA')}\n\n` +
+    `✅ للموافقة:\n${approveUrl}\n\n` +
+    `❌ للرفض:\n${rejectUrl}`;
+
+  await sendWhatsApp(ADMIN_PHONE, adminMsg);
+
+  showStep(3);
+  btn.disabled = false;
+  btn.textContent = 'تحقق';
+
+  // Start polling for approval
+  startApprovalCheck(authRequestId, token);
+}
+
+function startApprovalCheck(requestId, token) {
+  let seconds = 0;
+  const timerEl = document.getElementById('waitingTimer');
+
+  // Use Supabase Realtime
+  const channel = sb.channel('approval-' + requestId)
+    .on('postgres_changes', {
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'access_requests',
+      filter: `id=eq.${requestId}`
+    }, (payload) => {
+      const row = payload.new;
+      if (row.status === 'approved') {
+        channel.unsubscribe();
+        clearInterval(approvalCheckInterval);
+        localStorage.setItem('test_session', token);
+        localStorage.setItem('test_phone', row.phone);
+        localStorage.setItem('test_name', row.name);
+        // Add to approved users
+        sb.from('approved_users').upsert({
+          phone: row.phone, name: row.name, last_login: new Date().toISOString()
+        }, { onConflict: 'phone' }).then(() => {});
+        document.getElementById('authScreen').classList.add('hidden');
+        init();
+      } else if (row.status === 'rejected') {
+        channel.unsubscribe();
+        clearInterval(approvalCheckInterval);
+        showStep(4);
+      }
+    }).subscribe();
+
+  // Timer display
+  approvalCheckInterval = setInterval(() => {
+    seconds++;
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    timerEl.textContent = `جاري الانتظار... ${m}:${String(s).padStart(2,'0')}`;
+  }, 1000);
+
+  // Fallback polling every 5 seconds
+  const pollInterval = setInterval(async () => {
+    const { data } = await sb.from('access_requests')
+      .select('status').eq('id', requestId).single();
+    if (data?.status === 'approved') {
+      clearInterval(pollInterval);
+      channel.unsubscribe();
+      clearInterval(approvalCheckInterval);
+      localStorage.setItem('test_session', token);
+      document.getElementById('authScreen').classList.add('hidden');
+      init();
+    } else if (data?.status === 'rejected') {
+      clearInterval(pollInterval);
+      channel.unsubscribe();
+      clearInterval(approvalCheckInterval);
+      showStep(4);
+    }
+  }, 5000);
+}
+
+async function checkExistingSession() {
+  const token = localStorage.getItem('test_session');
+  if (!token) return false;
+
+  const { data } = await sb.from('access_requests')
+    .select('*').eq('session_token', token).eq('status', 'approved').single();
+
+  if (data) {
+    document.getElementById('authScreen').classList.add('hidden');
+    return true;
+  }
+
+  // Check if admin
+  const phone = localStorage.getItem('test_phone');
+  if (phone) {
+    const { data: admin } = await sb.from('approved_users')
+      .select('*').eq('phone', phone).eq('is_admin', true).single();
+    if (admin) {
+      document.getElementById('authScreen').classList.add('hidden');
+      return true;
+    }
+  }
+
+  localStorage.removeItem('test_session');
+  return false;
+}
 
 // ==========================================
 // TEST CASES DATA
@@ -1768,8 +2157,11 @@ async function exportReport() {
   URL.revokeObjectURL(url);
 }
 
-// Init
-init();
+// Init - check auth first
+(async () => {
+  const hasSession = await checkExistingSession();
+  if (hasSession) init();
+})();
 </script>
 
 </body>
