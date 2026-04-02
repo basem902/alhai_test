@@ -298,9 +298,7 @@
 // ==========================================
 const SUPABASE_URL = 'https://gdqkiyjxhtxbajwffvbd.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdkcWtpeWp4aHR4YmFqd2ZmdmJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwMzc4NTYsImV4cCI6MjA5MDYxMzg1Nn0.5KmijQ4EJ0EksMJKhCPttYbvWdS3Jq87qspWBEvmAwY';
-const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdkcWtpeWp4aHR4YmFqd2ZmdmJkIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTAzNzg1NiwiZXhwIjoyMDkwNjEzODU2fQ.l1HnNM6FbTTZBeHMAj7IPH8xEZXEhVILH8tWs18n5qc';
-
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ==========================================
 // AUTH CONFIG
