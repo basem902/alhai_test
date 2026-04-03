@@ -1694,8 +1694,24 @@ function populateCategoryFilter() {
   });
 }
 
+function getCurrentPhone() {
+  return localStorage.getItem('test_phone') || '';
+}
+
+function isAdmin() {
+  return localStorage.getItem('test_is_admin') === 'true';
+}
+
 async function loadRuns() {
-  const { data, error } = await sb.from('test_runs').select('*').order('created_at', { ascending: false });
+  const phone = getCurrentPhone();
+  let query = sb.from('test_runs').select('*').order('created_at', { ascending: false });
+
+  // Non-admin users only see their own runs
+  if (!isAdmin() && phone) {
+    query = query.eq('tester_phone', phone);
+  }
+
+  const { data, error } = await query;
   if (error) return;
   const sel = document.getElementById('runSelector');
   sel.innerHTML = '<option value="">-- اختر جلسة اختبار --</option>';
@@ -1709,6 +1725,9 @@ async function loadRuns() {
 
 function showNewRunModal() {
   document.getElementById('newRunModal').classList.remove('hidden');
+  // Auto-fill tester name from session
+  const savedName = localStorage.getItem('test_name') || '';
+  if (savedName) document.getElementById('newTesterName').value = savedName;
   document.getElementById('newRunName').focus();
 }
 
@@ -1722,8 +1741,8 @@ async function createNewRun() {
   const totalTests = TEST_CASES.reduce((sum, cat) => sum + cat.tests.length, 0);
 
   const { data, error } = await sb.from('test_runs').insert({
-    run_name: name, tester_name: tester, app_version: version,
-    environment: env, total_tests: totalTests
+    run_name: name, tester_name: tester, tester_phone: getCurrentPhone(),
+    app_version: version, environment: env, total_tests: totalTests
   }).select().single();
 
   if (error) { alert('خطأ: ' + error.message); return; }
