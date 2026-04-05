@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>تقرير اختبارات الحاي - نظرة شاملة</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="tests.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { font-family: 'Tajawal', sans-serif; }
+    .app-card { transition: all 0.3s; border: 2px solid transparent; }
+    .app-card:hover { transform: translateY(-4px); box-shadow: 0 12px 40px rgba(0,0,0,0.12); }
+    .priority-bar { height: 8px; border-radius: 4px; overflow: hidden; display: flex; }
+    .cat-chip { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; margin: 3px; }
+    @media print {
+      .no-print { display: none !important; }
+      .app-card { break-inside: avoid; page-break-inside: avoid; border: 1px solid #e5e7eb !important; box-shadow: none !important; }
+      body { background: white !important; }
+      .print-break { page-break-before: always; }
+    }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    .fade-up { animation: fadeUp 0.5s ease forwards; }
+    .fade-up-delay-1 { animation-delay: 0.1s; opacity: 0; }
+    .fade-up-delay-2 { animation-delay: 0.2s; opacity: 0; }
+    .fade-up-delay-3 { animation-delay: 0.3s; opacity: 0; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+<!-- Header -->
+<header class="bg-gradient-to-l from-blue-700 via-blue-600 to-indigo-700 text-white">
+  <div class="max-w-6xl mx-auto px-4 py-8 text-center">
+    <div class="text-5xl mb-4">🧪</div>
+    <h1 class="text-3xl font-extrabold mb-2">منصة اختبارات الحاي</h1>
+    <p class="text-blue-200 text-lg">Alhai Manual Testing Platform — تقرير شامل</p>
+    <div class="flex items-center justify-center gap-4 mt-6 flex-wrap">
+      <button onclick="window.print()" class="no-print bg-white/10 border border-white/30 text-white px-6 py-2 rounded-xl font-bold hover:bg-white/20 transition">
+        🖨️ طباعة التقرير
+      </button>
+      <a href="index.html" class="no-print bg-white text-blue-700 px-6 py-2 rounded-xl font-bold hover:bg-blue-50 transition">
+        🚀 دخول المنصة
+      </a>
+    </div>
+  </div>
+</header>
+
+<!-- Global Stats -->
+<div class="max-w-6xl mx-auto px-4 -mt-6">
+  <div class="bg-white rounded-2xl shadow-lg p-6 grid grid-cols-2 md:grid-cols-4 gap-4" id="globalStats">
+  </div>
+</div>
+
+<!-- Apps Grid -->
+<div class="max-w-6xl mx-auto px-4 py-8">
+  <h2 class="text-2xl font-extrabold text-gray-800 mb-6">التطبيقات ونطاق الاختبارات</h2>
+  <div id="appsGrid" class="grid grid-cols-1 lg:grid-cols-2 gap-6"></div>
+</div>
+
+<!-- Priority Legend -->
+<div class="max-w-6xl mx-auto px-4 pb-8 no-print">
+  <div class="bg-white rounded-2xl shadow-sm p-6">
+    <h3 class="font-bold text-gray-700 mb-3">دليل الاولويات</h3>
+    <div class="flex items-center gap-6 flex-wrap text-sm">
+      <span class="flex items-center gap-2"><span class="w-4 h-4 rounded bg-red-600"></span> حرج (Critical) — يمنع استخدام التطبيق</span>
+      <span class="flex items-center gap-2"><span class="w-4 h-4 rounded bg-orange-500"></span> عالي (High) — مهم جدا للتشغيل</span>
+      <span class="flex items-center gap-2"><span class="w-4 h-4 rounded bg-yellow-500"></span> متوسط (Medium) — ميزة مهمة</span>
+      <span class="flex items-center gap-2"><span class="w-4 h-4 rounded bg-green-500"></span> منخفض (Low) — تحسينات</span>
+    </div>
+  </div>
+</div>
+
+<!-- Footer -->
+<footer class="bg-gray-800 text-gray-400 text-center py-6 text-sm">
+  <p>منصة اختبارات الحاي — تم التوليد بتاريخ <span id="reportDate"></span></p>
+  <p class="mt-1">Alhai POS Testing Platform</p>
+</footer>
+
+<script>
+// ==========================================
+// Build Report from tests.js data
+// ==========================================
+
+const priorityColors = { critical: '#dc2626', high: '#ea580c', medium: '#ca8a04', low: '#16a34a' };
+const priorityNames = { critical: 'حرج', high: 'عالي', medium: 'متوسط', low: 'منخفض' };
+
+function getAppStats(appId) {
+  const tests = TEST_CASES_BY_APP[appId] || [];
+  const cats = tests.length;
+  let total = 0, critical = 0, high = 0, medium = 0, low = 0;
+  const catNames = [];
+
+  tests.forEach(cat => {
+    catNames.push({ name: cat.name, nameEn: cat.nameEn, icon: cat.icon, count: cat.tests.length });
+    cat.tests.forEach(t => {
+      total++;
+      if (t.priority === 'critical') critical++;
+      else if (t.priority === 'high') high++;
+      else if (t.priority === 'medium') medium++;
+      else low++;
+    });
+  });
+
+  return { cats, total, critical, high, medium, low, catNames };
+}
+
+// Global stats
+let grandTotal = 0, grandCats = 0, grandCritical = 0, grandHigh = 0;
+APPS.forEach(app => {
+  const s = getAppStats(app.id);
+  grandTotal += s.total;
+  grandCats += s.cats;
+  grandCritical += s.critical;
+  grandHigh += s.high;
+});
+
+document.getElementById('globalStats').innerHTML = `
+  <div class="text-center p-4 bg-blue-50 rounded-xl">
+    <div class="text-3xl font-extrabold text-blue-700">${APPS.length}</div>
+    <div class="text-sm text-blue-600 font-bold mt-1">تطبيقات</div>
+  </div>
+  <div class="text-center p-4 bg-purple-50 rounded-xl">
+    <div class="text-3xl font-extrabold text-purple-700">${grandCats}</div>
+    <div class="text-sm text-purple-600 font-bold mt-1">قسم اختبار</div>
+  </div>
+  <div class="text-center p-4 bg-emerald-50 rounded-xl">
+    <div class="text-3xl font-extrabold text-emerald-700">${grandTotal}</div>
+    <div class="text-sm text-emerald-600 font-bold mt-1">اختبار شامل</div>
+  </div>
+  <div class="text-center p-4 bg-red-50 rounded-xl">
+    <div class="text-3xl font-extrabold text-red-700">${grandCritical}</div>
+    <div class="text-sm text-red-600 font-bold mt-1">اختبار حرج</div>
+  </div>
+`;
+
+// App cards
+const grid = document.getElementById('appsGrid');
+APPS.forEach((app, idx) => {
+  const s = getAppStats(app.id);
+  const totalPriority = s.critical + s.high + s.medium + s.low;
+  const critPct = (s.critical / totalPriority * 100).toFixed(0);
+  const highPct = (s.high / totalPriority * 100).toFixed(0);
+  const medPct = (s.medium / totalPriority * 100).toFixed(0);
+  const lowPct = (s.low / totalPriority * 100).toFixed(0);
+
+  const card = document.createElement('div');
+  card.className = `app-card bg-white rounded-2xl shadow-sm overflow-hidden fade-up`;
+  card.style.animationDelay = (idx * 0.08) + 's';
+  card.style.opacity = '0';
+
+  card.innerHTML = `
+    <!-- Header -->
+    <div class="p-5 text-white" style="background: linear-gradient(135deg, ${app.color}, ${app.color}dd)">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <span class="text-3xl">${app.icon}</span>
+          <div>
+            <h3 class="text-xl font-extrabold">${app.name}</h3>
+            <p class="text-white/70 text-sm">${app.nameEn}</p>
+          </div>
+        </div>
+        <div class="text-left">
+          <div class="text-3xl font-extrabold">${s.total}</div>
+          <div class="text-white/70 text-xs">اختبار</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="p-5">
+      <!-- Counts -->
+      <div class="grid grid-cols-3 gap-3 mb-4">
+        <div class="text-center bg-gray-50 rounded-xl p-3">
+          <div class="text-xl font-extrabold text-gray-800">${s.cats}</div>
+          <div class="text-xs text-gray-500 font-bold">قسم</div>
+        </div>
+        <div class="text-center bg-red-50 rounded-xl p-3">
+          <div class="text-xl font-extrabold text-red-600">${s.critical}</div>
+          <div class="text-xs text-red-500 font-bold">حرج</div>
+        </div>
+        <div class="text-center bg-orange-50 rounded-xl p-3">
+          <div class="text-xl font-extrabold text-orange-600">${s.high}</div>
+          <div class="text-xs text-orange-500 font-bold">عالي</div>
+        </div>
+      </div>
+
+      <!-- Priority bar -->
+      <div class="mb-4">
+        <div class="flex justify-between text-xs text-gray-500 mb-1">
+          <span>توزيع الاولويات</span>
+          <span>${s.total} اختبار</span>
+        </div>
+        <div class="priority-bar">
+          <div style="width:${critPct}%; background:${priorityColors.critical}" title="حرج ${s.critical}"></div>
+          <div style="width:${highPct}%; background:${priorityColors.high}" title="عالي ${s.high}"></div>
+          <div style="width:${medPct}%; background:${priorityColors.medium}" title="متوسط ${s.medium}"></div>
+          <div style="width:${lowPct}%; background:${priorityColors.low}" title="منخفض ${s.low}"></div>
+        </div>
+        <div class="flex justify-between text-[10px] text-gray-400 mt-1">
+          <span>حرج ${critPct}%</span>
+          <span>عالي ${highPct}%</span>
+          <span>متوسط ${medPct}%</span>
+          <span>منخفض ${lowPct}%</span>
+        </div>
+      </div>
+
+      <!-- Categories -->
+      <div class="mb-4">
+        <p class="text-xs font-bold text-gray-500 mb-2">اقسام الاختبار (${s.cats}):</p>
+        <div class="flex flex-wrap">
+          ${s.catNames.map(c => `<span class="cat-chip bg-gray-100 text-gray-700">${c.icon} ${c.name} <span class="text-gray-400">(${c.count})</span></span>`).join('')}
+        </div>
+      </div>
+
+      <!-- Action -->
+      <a href="index.html?app=${app.id}" class="no-print block w-full text-center py-3 rounded-xl font-bold text-white transition hover:opacity-90" style="background:${app.color}">
+        ابدأ الاختبار →
+      </a>
+    </div>
+  `;
+
+  grid.appendChild(card);
+});
+
+// Date
+document.getElementById('reportDate').textContent = new Date().toLocaleDateString('ar-SA', {
+  year: 'numeric', month: 'long', day: 'numeric'
+});
+</script>
+
+</body>
+</html>

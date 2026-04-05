@@ -2276,6 +2276,11 @@ async function exportReport() {
 // Init - check auth first
 (async () => {
   renderAppTabs();
+  // Read ?app= from URL to auto-select app
+  const urlApp = new URLSearchParams(window.location.search).get('app');
+  if (urlApp && TEST_CASES_BY_APP[urlApp]) {
+    switchApp(urlApp);
+  }
   const hasSession = await checkExistingSession();
   if (hasSession) init();
 })();
