@@ -6,6 +6,7 @@
   <title>Alhai POS - Manual Testing Platform</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="tests.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800&display=swap" rel="stylesheet">
   <style>
     * { font-family: 'Tajawal', sans-serif; }
@@ -25,6 +26,11 @@
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     .progress-bar { transition: width 0.5s ease; }
     .screenshot-preview { max-height: 200px; object-fit: contain; cursor: pointer; }
+    .app-tab { padding: 8px 16px; border-radius: 10px; cursor: pointer; font-weight: 700; font-size: 13px; transition: all 0.2s; border: 2px solid transparent; white-space: nowrap; }
+    .app-tab:hover { background: rgba(255,255,255,0.15); }
+    .app-tab.active { background: white; color: #1e40af; border-color: white; }
+    .app-tabs-container { display: flex; gap: 6px; overflow-x: auto; padding: 4px 0; -webkit-overflow-scrolling: touch; }
+    .app-tabs-container::-webkit-scrollbar { height: 0; }
     .modal-overlay { background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); }
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-track { background: #f1f5f9; }
@@ -174,8 +180,8 @@
   <div class="max-w-7xl mx-auto px-4 py-4">
     <div class="flex items-center justify-between flex-wrap gap-4">
       <div>
-        <h1 class="text-2xl font-extrabold">منصة اختبارات الحاي POS</h1>
-        <p class="text-blue-200 text-sm">Alhai POS Manual Testing Platform</p>
+        <h1 class="text-2xl font-extrabold">منصة اختبارات الحاي</h1>
+        <p class="text-blue-200 text-sm"><span id="appNameDisplay">🛒 الكاشير</span> — Alhai Testing Platform</p>
       </div>
       <div class="flex items-center gap-3 flex-wrap">
         <div id="connectionStatus" class="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-lg text-sm">
@@ -195,6 +201,16 @@
     </div>
   </div>
 </header>
+
+<!-- App Selector -->
+<div class="bg-gradient-to-l from-blue-800 to-indigo-900 no-print">
+  <div class="max-w-7xl mx-auto px-4 py-2">
+    <div class="flex items-center gap-3">
+      <span class="text-blue-300 text-sm font-bold ml-2">التطبيق:</span>
+      <div class="app-tabs-container" id="appTabs"></div>
+    </div>
+  </div>
+</div>
 
 <!-- Stats Bar -->
 <div id="statsBar" class="bg-white border-b shadow-sm no-print hidden">
@@ -253,7 +269,17 @@
   <div id="welcomeScreen" class="text-center py-20">
     <div class="text-6xl mb-4">🧪</div>
     <h2 class="text-3xl font-bold text-gray-800 mb-2">مرحبا بك في منصة الاختبارات</h2>
-    <p class="text-gray-500 mb-8">انشئ جلسة اختبار جديدة للبدء، او اختر جلسة سابقة</p>
+    <p class="text-gray-500 mb-4">اختر التطبيق من الشريط اعلاه، ثم انشئ جلسة اختبار جديدة</p>
+    <div class="flex items-center justify-center gap-3 flex-wrap mb-8">
+      <span class="text-sm text-gray-400">7 تطبيقات:</span>
+      <span class="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-sm font-bold">🛒 الكاشير</span>
+      <span class="bg-purple-50 text-purple-700 px-3 py-1 rounded-full text-sm font-bold">🏢 الادارة</span>
+      <span class="bg-cyan-50 text-cyan-700 px-3 py-1 rounded-full text-sm font-bold">📱 المبسطة</span>
+      <span class="bg-green-50 text-green-700 px-3 py-1 rounded-full text-sm font-bold">👤 العميل</span>
+      <span class="bg-amber-50 text-amber-700 px-3 py-1 rounded-full text-sm font-bold">🚗 السائق</span>
+      <span class="bg-red-50 text-red-700 px-3 py-1 rounded-full text-sm font-bold">🏭 الموزع</span>
+      <span class="bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full text-sm font-bold">🛡️ المدير العام</span>
+    </div>
     <button onclick="showNewRunModal()" class="bg-blue-600 text-white px-8 py-3 rounded-xl text-lg font-bold hover:bg-blue-700 transition shadow-lg">
       انشاء جلسة اختبار جديدة
     </button>
@@ -638,9 +664,57 @@ async function checkExistingSession() {
 }
 
 // ==========================================
-// TEST CASES DATA
+// APP SWITCHING (tests loaded from tests.js)
 // ==========================================
-const TEST_CASES = [
+let currentAppId = 'cashier';
+
+function getActiveTestCases() {
+  return TEST_CASES_BY_APP[currentAppId] || [];
+}
+
+function switchApp(appId) {
+  currentAppId = appId;
+  // Update tabs UI
+  document.querySelectorAll('.app-tab').forEach(tab => {
+    tab.classList.toggle('active', tab.dataset.app === appId);
+  });
+  // Update header color
+  const app = APPS.find(a => a.id === appId);
+  if (app) {
+    document.getElementById('appNameDisplay').textContent = app.icon + ' ' + app.name;
+  }
+  // Refresh category filter
+  const sel = document.getElementById('categoryFilter');
+  sel.innerHTML = '<option value="all">كل الاقسام</option>';
+  getActiveTestCases().forEach(cat => {
+    const opt = document.createElement('option');
+    opt.value = cat.id;
+    opt.textContent = cat.name;
+    sel.appendChild(opt);
+  });
+  // Reload view
+  if (currentRunId) {
+    loadRun(currentRunId);
+  } else {
+    if (currentView === 'categories') renderCategories();
+  }
+}
+
+function renderAppTabs() {
+  const container = document.getElementById('appTabs');
+  container.innerHTML = '';
+  APPS.forEach(app => {
+    const tab = document.createElement('div');
+    tab.className = 'app-tab text-white' + (app.id === currentAppId ? ' active' : '');
+    tab.dataset.app = app.id;
+    tab.textContent = app.icon + ' ' + app.name;
+    tab.onclick = () => switchApp(app.id);
+    container.appendChild(tab);
+  });
+}
+
+// Alias for backward compatibility
+const TEST_CASES_ALIAS = [
   {
     id: 'loading',
     name: 'تحميل التطبيق',
@@ -1632,6 +1706,7 @@ const TEST_CASES = [
     ]
   },
 ];
+// ^ End of legacy alias (not used - tests now come from tests.js)
 
 // ==========================================
 // APP LOGIC
@@ -1686,7 +1761,7 @@ function setConnectionStatus(ok) {
 
 function populateCategoryFilter() {
   const sel = document.getElementById('categoryFilter');
-  TEST_CASES.forEach(cat => {
+  getActiveTestCases().forEach(cat => {
     const opt = document.createElement('option');
     opt.value = cat.id;
     opt.textContent = cat.name;
@@ -1738,7 +1813,7 @@ async function createNewRun() {
   const env = document.getElementById('newEnvironment').value;
   if (!name || !tester) { alert('يرجى ملء الاسم واسم المختبر'); return; }
 
-  const totalTests = TEST_CASES.reduce((sum, cat) => sum + cat.tests.length, 0);
+  const totalTests = getActiveTestCases().reduce((sum, cat) => sum + cat.tests.length, 0);
 
   const { data, error } = await sb.from('test_runs').insert({
     run_name: name, tester_name: tester, tester_phone: getCurrentPhone(),
@@ -1749,7 +1824,7 @@ async function createNewRun() {
 
   // Create test result records
   const results = [];
-  TEST_CASES.forEach(cat => {
+  getActiveTestCases().forEach(cat => {
     cat.tests.forEach(test => {
       results.push({
         run_id: data.id, test_id: test.id, category: cat.id,
@@ -1837,7 +1912,7 @@ function renderCategories() {
   const catVal = document.getElementById('categoryFilter').value;
 
   grid.innerHTML = '';
-  TEST_CASES.forEach(cat => {
+  getActiveTestCases().forEach(cat => {
     if (catVal !== 'all' && cat.id !== catVal) return;
 
     const catResults = cat.tests.map(t => testResults[t.id]).filter(Boolean);
@@ -1894,7 +1969,7 @@ function renderCategories() {
 
 function openCategory(catId) {
   currentCategory = catId;
-  const cat = TEST_CASES.find(c => c.id === catId);
+  const cat = getActiveTestCases().find(c => c.id === catId);
   if (!cat) return;
 
   document.getElementById('listTitle').textContent = cat.icon + ' ' + cat.name;
@@ -2039,7 +2114,7 @@ async function setStatus(testId, status) {
   updateStats();
 
   // Re-render the test card
-  const cat = TEST_CASES.find(c => c.tests.some(t => t.id === testId));
+  const cat = getActiveTestCases().find(c => c.tests.some(t => t.id === testId));
   if (cat && currentView === 'list') renderTestList(cat);
   if (currentView === 'categories') renderCategories();
 }
@@ -2088,7 +2163,7 @@ async function uploadScreenshot(testId, input) {
   if (testResults[testId]) testResults[testId].screenshot_url = publicUrl;
 
   // Re-render
-  const cat = TEST_CASES.find(c => c.tests.some(t => t.id === testId));
+  const cat = getActiveTestCases().find(c => c.tests.some(t => t.id === testId));
   if (cat) renderTestList(cat);
 }
 
@@ -2102,7 +2177,7 @@ function applyFilters() {
   if (currentView === 'categories') {
     renderCategories();
   } else if (currentCategory) {
-    const cat = TEST_CASES.find(c => c.id === currentCategory);
+    const cat = getActiveTestCases().find(c => c.id === currentCategory);
     if (cat) renderTestList(cat);
   }
 }
@@ -2138,7 +2213,7 @@ async function exportReport() {
       .screenshot { max-width: 200px; max-height: 120px; border-radius: 8px; }
       @media print { body { margin: 0; } }
     </style></head><body>
-    <h1>تقرير اختبار الحاي POS</h1>
+    <h1>تقرير اختبار الحاي - ${(APPS.find(a => a.id === currentAppId) || {}).name || 'POS'}</h1>
     <p><strong>الجلسة:</strong> ${currentRunData.run_name} | <strong>المختبر:</strong> ${currentRunData.tester_name}</p>
     <p><strong>الاصدار:</strong> ${currentRunData.app_version} | <strong>البيئة:</strong> ${currentRunData.environment}</p>
     <p><strong>التاريخ:</strong> ${new Date().toLocaleString('ar-SA')}</p>
@@ -2152,7 +2227,7 @@ async function exportReport() {
       <div class="stat"><div class="num">${pct}%</div>مكتمل</div>
     </div>`;
 
-  TEST_CASES.forEach(cat => {
+  getActiveTestCases().forEach(cat => {
     const catTests = cat.tests.map(t => ({ ...t, result: testResults[t.id] || { status: 'pending' } }));
     const catPass = catTests.filter(t => t.result.status === 'pass').length;
     const catFail = catTests.filter(t => t.result.status === 'fail').length;
@@ -2200,6 +2275,7 @@ async function exportReport() {
 
 // Init - check auth first
 (async () => {
+  renderAppTabs();
   const hasSession = await checkExistingSession();
   if (hasSession) init();
 })();
